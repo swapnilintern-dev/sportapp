@@ -273,8 +273,12 @@ class AppSearchBar extends StatelessWidget {
       );
 }
 
-/// Six-box OTP input. Renders one focused hidden field behind six visual boxes
-/// so paste, autofill (SMS OTP on Android/iOS) and backspace all just work.
+/// Six-box OTP input.
+///
+/// A real, full-size TextField sits transparently on top of the six visual
+/// boxes, so every tap lands on an actual editable and the platform keyboard
+/// stays open (a hidden 1-px field gets its keyboard dismissed on Android).
+/// Paste, SMS autofill and backspace all work as on a normal field.
 class OtpInput extends StatefulWidget {
   const OtpInput({
     super.key,
@@ -298,44 +302,84 @@ class OtpInput extends StatefulWidget {
 }
 
 class _OtpInputState extends State<OtpInput> {
-  final FocusNode _focus = FocusNode();
+  final FocusNode _focus = FocusNode(debugLabel: 'otp');
+  String _lastCompleted = '';
 
   @override
   void initState() {
     super.initState();
     widget.controller.addListener(_onChanged);
-    _focus.addListener(() => setState(() {}));
+    _focus.addListener(_onFocusChanged);
   }
 
   @override
   void dispose() {
     widget.controller.removeListener(_onChanged);
+    _focus.removeListener(_onFocusChanged);
     _focus.dispose();
     super.dispose();
   }
 
+  void _onFocusChanged() {
+    if (mounted) setState(() {});
+  }
+
   void _onChanged() {
+    if (!mounted) return;
     setState(() {});
-    if (widget.controller.text.length == widget.length) {
-      widget.onCompleted?.call(widget.controller.text);
+    final String text = widget.controller.text;
+    if (text.length == widget.length && text != _lastCompleted) {
+      _lastCompleted = text;
+      widget.onCompleted?.call(text);
     }
+    if (text.length < widget.length) _lastCompleted = '';
+  }
+
+  void _requestFocus() {
+    if (!widget.enabled) return;
+    if (_focus.hasFocus) {
+      // Already focused but the keyboard may have been dismissed: reopen it.
+      SystemChannels.textInput.invokeMethod<void>('TextInput.show');
+    } else {
+      _focus.requestFocus();
+    }
+    // Keep the caret at the end so typing appends.
+    widget.controller.selection =
+        TextSelection.collapsed(offset: widget.controller.text.length);
   }
 
   @override
   Widget build(BuildContext context) {
     final String text = widget.controller.text;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => _focus.requestFocus(),
+    const double boxHeight = 54;
+
+    return SizedBox(
+      height: boxHeight,
       child: Stack(
-        alignment: Alignment.center,
+        fit: StackFit.expand,
         children: [
-          // The real (invisible) field. Kept 1px tall so the keyboard can
-          // attach without any visible caret.
-          Opacity(
-            opacity: 0,
-            child: SizedBox(
-              height: 1,
+          // Visual boxes (never receive pointer events).
+          IgnorePointer(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                for (int i = 0; i < widget.length; i++)
+                  _OtpBox(
+                    char: i < text.length ? text[i] : '',
+                    active: _focus.hasFocus &&
+                        (i == text.length ||
+                            (i == widget.length - 1 &&
+                                text.length == widget.length)),
+                    hasError: widget.hasError,
+                  ),
+              ],
+            ),
+          ),
+          // The real editable, full-size and transparent, on top.
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _requestFocus,
               child: TextField(
                 controller: widget.controller,
                 focusNode: _focus,
@@ -346,30 +390,31 @@ class _OtpInputState extends State<OtpInput> {
                 autofillHints: const [AutofillHints.oneTimeCode],
                 maxLength: widget.length,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                autocorrect: false,
+                enableSuggestions: false,
+                enableInteractiveSelection: false,
+                showCursor: false,
+                cursorColor: Colors.transparent,
+                // Transparent glyphs sized like the boxes so the platform
+                // treats this as a normal, visible field.
+                style: const TextStyle(
+                  color: Colors.transparent,
+                  fontSize: 20,
+                  height: 1,
+                ),
                 decoration: const InputDecoration(
                   counterText: '',
                   border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  disabledBorder: InputBorder.none,
+                  filled: false,
+                  isDense: true,
+                  contentPadding: EdgeInsets.zero,
                 ),
-                style: const TextStyle(color: Colors.transparent, fontSize: 1),
-                cursorColor: Colors.transparent,
-                showCursor: false,
-                enableInteractiveSelection: false,
+                onTap: _requestFocus,
               ),
             ),
-          ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              for (int i = 0; i < widget.length; i++)
-                _OtpBox(
-                  char: i < text.length ? text[i] : '',
-                  active: _focus.hasFocus &&
-                      (i == text.length ||
-                          (i == widget.length - 1 &&
-                              text.length == widget.length)),
-                  hasError: widget.hasError,
-                ),
-            ],
           ),
         ],
       ),
