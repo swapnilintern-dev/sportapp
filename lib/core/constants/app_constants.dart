@@ -6,9 +6,9 @@ abstract final class AppInfo {
   static const String name = 'SPOCART';
   static const String tagline = 'Your Sports Business Partner';
   static const String version = '1.0.0';
-  static const String website = 'https://spocart.in';
-  static const String privacyUrl = 'https://spocart.in/about.html';
-  static const String termsUrl = 'https://spocart.in/about.html';
+  static const String website = 'https://www.spocart.info';
+  static const String privacyUrl = 'https://www.spocart.info/about.html';
+  static const String termsUrl = 'https://www.spocart.info/about.html';
 }
 
 /// Business contact points surfaced on the help sheet and support screens.

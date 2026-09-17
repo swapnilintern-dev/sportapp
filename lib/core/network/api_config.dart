@@ -7,12 +7,13 @@ import 'package:flutter/foundation.dart';
 //------------------------------------------------------------------------------
 // Single source of truth for the backend base URL.
 //
-//   flutter run --dart-define=API_BASE_URL=https://api.spocart.in/api/v1
+//   flutter run --dart-define=API_BASE_URL=https://api.spocart.info/api/v1
 //   flutter run --dart-define=USE_DEMO_BACKEND=true   (no server needed)
 //
-// Without a define the app targets a local `spocart-api` on port 3000:
-// iOS simulator / desktop → 127.0.0.1, Android emulator → 10.0.2.2.
-// A physical phone needs the Mac's LAN IP via --dart-define.
+// Without a define: release builds use the hosted API; debug builds target a
+// local `spocart-api` on port 3000 (iOS simulator / desktop → 127.0.0.1,
+// Android emulator → 10.0.2.2). A physical phone in debug needs the Mac's
+// LAN IP via --dart-define.
 //==============================================================================
 abstract final class ApiConfig {
   static const String _override = String.fromEnvironment('API_BASE_URL');
@@ -21,8 +22,14 @@ abstract final class ApiConfig {
   static const bool useDemoBackend =
       bool.fromEnvironment('USE_DEMO_BACKEND', defaultValue: false);
 
+  /// Hosted API (Render). Becomes https://api.spocart.info once the custom
+  /// domain is mapped.
+  static const String productionBaseUrl =
+      'https://spocart-api.onrender.com/api/v1';
+
   static String get baseUrl {
     if (_override.isNotEmpty) return _stripSlash(_override);
+    if (kReleaseMode) return productionBaseUrl;
     final String host =
         !kIsWeb && Platform.isAndroid ? '10.0.2.2' : '127.0.0.1';
     return 'http://$host:3000/api/v1';

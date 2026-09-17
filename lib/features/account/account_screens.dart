@@ -549,14 +549,14 @@ class PrivacySecurityScreen extends StatelessWidget {
                 AccountMenuItem(
                   icon: Icons.policy_outlined,
                   label: 'Privacy Policy',
-                  subtitle: 'Opens spocart.in',
+                  subtitle: 'Opens spocart.info',
                   onTap: () =>
                       SupportLauncher.website(context, AppInfo.privacyUrl),
                 ),
                 AccountMenuItem(
                   icon: Icons.gavel_outlined,
                   label: 'Terms of Service',
-                  subtitle: 'Opens spocart.in',
+                  subtitle: 'Opens spocart.info',
                   onTap: () => SupportLauncher.website(context, AppInfo.termsUrl),
                 ),
                 AccountMenuItem(
@@ -715,7 +715,7 @@ class AboutScreen extends StatelessWidget {
               items: [
                 AccountMenuItem(
                   icon: Icons.language_rounded,
-                  label: 'spocart.in',
+                  label: 'spocart.info',
                   onTap: () => SupportLauncher.website(context),
                 ),
                 AccountMenuItem(
