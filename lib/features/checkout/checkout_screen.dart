@@ -37,10 +37,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   PaymentMethod _payment = PaymentMethod.upi;
   bool _placing = false;
 
-  static const Set<PaymentMethod> _enabledMethods = <PaymentMethod>{
-    PaymentMethod.upi,
-    PaymentMethod.payLater,
-  };
+  /// Every online method runs through one Razorpay checkout; the demo backend
+  /// has no gateway, so it only offers business credit.
+  Set<PaymentMethod> get _enabledMethods => AppScope.of(context).isDemo
+      ? const <PaymentMethod>{PaymentMethod.payLater}
+      : PaymentMethod.values.toSet();
 
   @override
   void initState() {
@@ -48,6 +49,24 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final AppServices services = AppScope.of(context);
     services.addresses.load();
     services.orders.load();
+    if (services.isDemo) _payment = PaymentMethod.payLater;
+    _loadCredit();
+  }
+
+  double? _availableCredit;
+
+  Future<void> _loadCredit() async {
+    final AppServices services = AppScope.of(context);
+    try {
+      await services.orders.loadDashboard(
+        creditLimit: services.session.session?.creditLimit ?? 0,
+      );
+      if (mounted) {
+        setState(() => _availableCredit = services.orders.dashboard?.availableCredit);
+      }
+    } catch (_) {
+      // Credit is re-checked by the server when the order is placed.
+    }
   }
 
   Address? _selectedAddress(AddressController addresses) {
@@ -95,66 +114,47 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return;
     }
 
-    switch (_payment) {
-      case PaymentMethod.upi:
-        final String reference = 'SPOCART ${DateTime.now().millisecondsSinceEpoch % 1000000}';
-        final bool paid = await AppNavigator.toUpiPayment(
-          context,
-          amount: cart.total,
-          reference: reference,
-        );
-        if (!paid || !mounted) return;
-        await _placeOrder(address, paid: true);
-      case PaymentMethod.payLater:
-        final double available = _availableCredit(services);
-        if (cart.total > available) {
-          showAppSnackBar(
-            context,
-            'Order total exceeds your available credit of ${formatInr(available)}. Choose UPI or reduce the order.',
-            tone: SnackTone.error,
-            duration: const Duration(seconds: 5),
-          );
-          return;
-        }
-        final bool ok = await showAppConfirmDialog(
-          context,
-          title: 'Place order on credit?',
-          message:
-              '${formatInr(cart.total)} will be invoiced to your business credit, payable within 30 days.',
-          confirmLabel: 'Place Order',
-          icon: Icons.schedule_rounded,
-        );
-        if (!ok || !mounted) return;
-        await _placeOrder(address, paid: false);
-      case PaymentMethod.netBanking:
-      case PaymentMethod.card:
-      case PaymentMethod.wallet:
+    if (_payment == PaymentMethod.payLater) {
+      final double? available = _availableCredit;
+      if (available != null && cart.total > available) {
         showAppSnackBar(
           context,
-          '${_payment.title} is not enabled for your account yet.',
+          'Order total exceeds your available credit of ${formatInr(available)}. Pay online or reduce the order.',
           tone: SnackTone.error,
+          duration: const Duration(seconds: 5),
         );
+        return;
+      }
+      final bool ok = await showAppConfirmDialog(
+        context,
+        title: 'Place order on credit?',
+        message:
+            '${formatInr(cart.total)} will be invoiced to your business credit, payable within 30 days.',
+        confirmLabel: 'Place Order',
+        icon: Icons.schedule_rounded,
+      );
+      if (!ok || !mounted) return;
     }
+    await _placeOrder(address);
   }
 
-  double _availableCredit(AppServices services) {
-    final double limit = services.session.session?.creditLimit ?? 0;
-    return (limit - services.orders.outstandingPayment).clamp(0, limit);
-  }
-
-  Future<void> _placeOrder(Address address, {required bool paid}) async {
+  Future<void> _placeOrder(Address address) async {
     final AppServices services = AppScope.of(context);
     setState(() => _placing = true);
     try {
-      final Order order = await services.orders.placeOrder(
+      final PlaceOrderResult result = await services.orders.placeOrder(
         cart: services.cart,
         address: address,
         paymentMethod: _payment,
-        paid: paid,
       );
-      services.cart.clear();
       if (!mounted) return;
-      AppNavigator.toOrderConfirmation(context, order);
+      if (result.checkout == null) {
+        // Pay Later (or demo): the order is placed; nothing left to pay now.
+        services.cart.clear();
+        AppNavigator.toOrderConfirmation(context, result.order);
+      } else {
+        AppNavigator.toRazorpayCheckout(context, order: result.order, checkout: result.checkout!);
+      }
     } on AppException catch (e) {
       if (mounted) showAppSnackBar(context, e.message, tone: SnackTone.error);
     } catch (_) {
@@ -184,7 +184,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         final CartController cart = services.cart;
         final AddressController addresses = services.addresses;
         final Address? selected = _selectedAddress(addresses);
-        final double credit = _availableCredit(services);
+        final double? credit = _availableCredit;
 
         return Scaffold(
           backgroundColor: AppColors.background,
@@ -246,7 +246,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             method: m,
                             selected: _payment == m,
                             enabled: _enabledMethods.contains(m),
-                            detail: m == PaymentMethod.payLater
+                            detail: m == PaymentMethod.payLater && credit != null
                                 ? 'Available credit ${formatInr(credit)}'
                                 : null,
                             onTap: () => setState(() => _payment = m),
@@ -286,9 +286,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ? null
               : BottomActionBar(
                   child: PrimaryButton(
-                    label: _payment == PaymentMethod.upi
-                        ? 'Continue to Pay ${formatInr(cart.total)}'
-                        : 'Continue',
+                    label: _payment == PaymentMethod.payLater
+                        ? 'Place Order on Credit'
+                        : 'Continue to Pay ${formatInr(cart.total)}',
                     loading: _placing,
                     onPressed: _continue,
                   ),
@@ -419,7 +419,7 @@ class _PaymentOption extends StatelessWidget {
                   Text(
                     enabled
                         ? (detail ?? method.subtitle)
-                        : 'Not enabled for your account yet',
+                        : 'Available with the SPOCART server',
                     style: AppTypography.caption,
                   ),
                 ],

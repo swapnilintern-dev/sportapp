@@ -5,8 +5,6 @@ import '../data/repositories/repositories.dart';
 
 //==============================================================================
 // SPOCART — Team members controller
-//------------------------------------------------------------------------------
-// Colleagues attached to the business account. Persisted per account.
 //==============================================================================
 
 class TeamController extends ChangeNotifier {
@@ -32,6 +30,8 @@ class TeamController extends ChangeNotifier {
     try {
       _members = List<TeamMember>.of(await _repository.fetchMembers());
       _loaded = true;
+    } on AppException catch (e) {
+      _error = e.message;
     } catch (_) {
       _error = 'Could not load team members.';
     } finally {
@@ -40,21 +40,18 @@ class TeamController extends ChangeNotifier {
     }
   }
 
-  Future<void> save(TeamMember member) async {
-    final int i = _members.indexWhere((m) => m.id == member.id);
-    if (i >= 0) {
-      _members[i] = member;
-    } else {
-      _members.add(member);
-    }
+  Future<TeamMember> add(TeamMember member) async {
+    final TeamMember saved = await _repository.add(member);
+    _members.add(saved);
+    _loaded = true;
     notifyListeners();
-    await _repository.saveAll(_members);
+    return saved;
   }
 
   Future<void> remove(String id) async {
+    await _repository.remove(id);
     _members.removeWhere((m) => m.id == id);
     notifyListeners();
-    await _repository.saveAll(_members);
   }
 
   void reset() {

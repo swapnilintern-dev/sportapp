@@ -100,7 +100,7 @@ class AppNotification {
         type: NotificationTypeMeta.fromName(json['type'] as String?),
         title: json['title'] as String? ?? '',
         body: json['body'] as String? ?? '',
-        time: DateTime.parse(json['time'] as String),
+        time: DateTime.parse((json['time'] ?? json['createdAt']) as String),
         read: json['read'] as bool? ?? false,
         orderId: json['orderId'] as String?,
         productId: json['productId'] as String?,
@@ -123,7 +123,7 @@ extension QuoteKindLabel on QuoteKind {
       );
 }
 
-enum QuoteStatus { submitted, underReview, quoted, accepted }
+enum QuoteStatus { submitted, underReview, quoted, accepted, declined }
 
 extension QuoteStatusMeta on QuoteStatus {
   String get label => switch (this) {
@@ -131,6 +131,7 @@ extension QuoteStatusMeta on QuoteStatus {
         QuoteStatus.underReview => 'Under Review',
         QuoteStatus.quoted => 'Quote Ready',
         QuoteStatus.accepted => 'Accepted',
+        QuoteStatus.declined => 'Declined',
       };
 
   Color get color => switch (this) {
@@ -138,6 +139,7 @@ extension QuoteStatusMeta on QuoteStatus {
         QuoteStatus.underReview => AppColors.warning,
         QuoteStatus.quoted => AppColors.info,
         QuoteStatus.accepted => AppColors.success,
+        QuoteStatus.declined => AppColors.red,
       };
 
   static QuoteStatus fromName(String? name) => QuoteStatus.values.firstWhere(

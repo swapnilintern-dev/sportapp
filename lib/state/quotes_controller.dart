@@ -6,9 +6,6 @@ import 'notifications_controller.dart';
 
 //==============================================================================
 // SPOCART — Quotes controller
-//------------------------------------------------------------------------------
-// Requests for quotation raised from Bulk Pricing, Custom / Team Order and the
-// Bulk Order Upload flow. Persisted locally; surfaced on the dashboard.
 //==============================================================================
 
 class QuotesController extends ChangeNotifier {
@@ -36,6 +33,8 @@ class QuotesController extends ChangeNotifier {
     try {
       _quotes = List<QuoteRequest>.of(await _repository.fetchAll());
       _loaded = true;
+    } on AppException catch (e) {
+      _error = e.message;
     } catch (_) {
       _error = 'Could not load your quotations.';
     } finally {
@@ -55,30 +54,31 @@ class QuotesController extends ChangeNotifier {
     required QuoteKind kind,
     required List<QuoteItem> items,
     required String notes,
+    String? designFilePath,
     String? designFileName,
   }) async {
     if (items.isEmpty) throw const AppException('Add at least one item.');
-    final DateTime now = DateTime.now();
-    final QuoteRequest draft = QuoteRequest(
-      id: Ids.quote(now),
+    final QuoteRequest saved = await _repository.submit(QuoteDraft(
       kind: kind,
-      createdAt: now,
       items: items,
       notes: notes,
+      designFilePath: designFilePath,
       designFileName: designFileName,
-    );
-    final QuoteRequest saved = await _repository.submit(draft);
+    ));
     _quotes.insert(0, saved);
     _loaded = true;
     notifyListeners();
 
-    await _notifications.push(
-      type: NotificationType.quote,
-      title: 'Quotation Request Received',
-      body:
-          '${kind.label} ${saved.id} is with our team. We usually respond within one business day.',
-      quoteId: saved.id,
-    );
+    if (_notifications.localEvents) {
+      await _notifications.pushLocal(
+        type: NotificationType.quote,
+        title: 'Quotation Request Received',
+        body: '${kind.label} ${saved.id} is with our team. We usually respond within one business day.',
+        quoteId: saved.id,
+      );
+    } else {
+      _notifications.load(force: true);
+    }
     return saved;
   }
 

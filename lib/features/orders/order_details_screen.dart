@@ -12,6 +12,7 @@ import '../../core/widgets/layout.dart';
 import '../../core/widgets/media.dart';
 import '../../core/widgets/state_views.dart';
 import '../../data/models/order.dart';
+import '../../data/repositories/repositories.dart';
 import '../../state/orders_controller.dart';
 import '../invoices/invoice_pdf.dart';
 import '../support/help_sheet.dart';
@@ -38,6 +39,28 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   void initState() {
     super.initState();
     AppScope.of(context).orders.load();
+  }
+
+  bool _paying = false;
+
+  /// Reopens Razorpay for an order whose payment was cancelled or failed.
+  Future<void> _payNow(Order order) async {
+    if (_paying) return;
+    setState(() => _paying = true);
+    try {
+      final PlaceOrderResult fresh =
+          await AppScope.of(context).orders.retryPayment(order.id);
+      if (!mounted) return;
+      if (fresh.checkout == null) {
+        showAppSnackBar(context, 'This order no longer needs a payment.');
+        return;
+      }
+      AppNavigator.toRazorpayCheckout(context, order: fresh.order, checkout: fresh.checkout!);
+    } on AppException catch (e) {
+      if (mounted) showAppSnackBar(context, e.message, tone: SnackTone.error);
+    } finally {
+      if (mounted) setState(() => _paying = false);
+    }
   }
 
   void _trackShipment(Order order) {
@@ -181,11 +204,18 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
           bottomNavigationBar: order == null || !order.status.isOpen
               ? null
               : BottomActionBar(
-                  child: PrimaryButton(
-                    label: 'Track Shipment',
-                    icon: Icons.local_shipping_outlined,
-                    onPressed: () => _trackShipment(order),
-                  ),
+                  child: order.status.awaitingPayment
+                      ? PrimaryButton(
+                          label: 'Pay ${formatInr(order.total)} Now',
+                          icon: Icons.lock_outline_rounded,
+                          loading: _paying,
+                          onPressed: () => _payNow(order),
+                        )
+                      : PrimaryButton(
+                          label: 'Track Shipment',
+                          icon: Icons.local_shipping_outlined,
+                          onPressed: () => _trackShipment(order),
+                        ),
                 ),
         );
       },

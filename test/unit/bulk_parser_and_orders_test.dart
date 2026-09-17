@@ -65,8 +65,8 @@ void main() {
         () async {
       final MemoryStore store = MemoryStore();
       final AccountKey account = AccountKey()..mobile = '9876543210';
-      final NotificationsController notifications =
-          NotificationsController(DemoNotificationRepository(store, account));
+      final NotificationsController notifications = NotificationsController(
+          DemoNotificationRepository(store, account), localEvents: true);
       final OrdersController orders =
           OrdersController(DemoOrderRepository(store, account), notifications);
       final CartController cart = CartController(CartStorage(store), catalog);
@@ -74,12 +74,13 @@ void main() {
       cart.add(catalog.productById('ck-kashmir-willow-bat')!);
       cart.add(catalog.productById('ck-ss-ball')!);
 
-      final Order order = await orders.placeOrder(
+      final PlaceOrderResult result = await orders.placeOrder(
         cart: cart,
         address: _address,
-        paymentMethod: PaymentMethod.upi,
-        paid: true,
+        paymentMethod: PaymentMethod.payLater,
       );
+      final Order order = result.order;
+      expect(result.checkout, isNull);
 
       expect(order.id, startsWith('SC-'));
       expect(order.invoiceId, startsWith('INV-'));
@@ -95,37 +96,42 @@ void main() {
           OrdersController(DemoOrderRepository(store, account), notifications);
       await again.load();
       expect(again.orders.single.id, order.id);
-      expect(again.totalPurchases, closeTo(order.total, 0.001));
-      expect(again.pendingCount, 1);
+      await again.loadDashboard(creditLimit: 100000);
+      expect(again.dashboard!.totalPurchases, closeTo(order.total, 0.001));
+      expect(again.dashboard!.pendingOrders, 1);
     });
 
-    test('pay-later orders count as outstanding until marked paid', () async {
+    test('pay-later orders reduce available credit on the dashboard', () async {
       final MemoryStore store = MemoryStore();
       final AccountKey account = AccountKey()..mobile = '9876543210';
-      final NotificationsController notifications =
-          NotificationsController(DemoNotificationRepository(store, account));
+      final NotificationsController notifications = NotificationsController(
+          DemoNotificationRepository(store, account), localEvents: true);
       final OrdersController orders =
           OrdersController(DemoOrderRepository(store, account), notifications);
       final CartController cart = CartController(CartStorage(store), catalog);
       await cart.load();
       cart.add(catalog.productById('ft-dumbbell-set')!);
 
-      final Order order = await orders.placeOrder(
+      final PlaceOrderResult result = await orders.placeOrder(
         cart: cart,
         address: _address,
         paymentMethod: PaymentMethod.payLater,
-        paid: false,
       );
-      expect(orders.outstandingPayment, closeTo(order.total, 0.001));
-      await orders.markPaid(order.id);
-      expect(orders.outstandingPayment, 0);
+      expect(result.order.paid, isFalse);
+      await orders.loadDashboard(creditLimit: 100000);
+      expect(orders.dashboard!.outstandingPayment, closeTo(result.order.total, 0.001));
+      expect(orders.dashboard!.availableCredit,
+          closeTo(100000 - result.order.total, 0.001));
+      expect(orders.invoices, isEmpty);
+      await orders.loadInvoices();
+      expect(orders.invoices.single.paid, isFalse);
     });
 
     test('account data is namespaced per mobile number', () async {
       final MemoryStore store = MemoryStore();
       final AccountKey account = AccountKey()..mobile = '9000000001';
       final DemoAddressRepository repo = DemoAddressRepository(store, account);
-      await repo.saveAll(const [_address]);
+      await repo.save(_address);
       expect((await repo.fetchAddresses()).length, 1);
       account.mobile = '9000000002';
       expect(await repo.fetchAddresses(), isEmpty);

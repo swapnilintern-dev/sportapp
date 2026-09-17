@@ -6,7 +6,7 @@ import '../data/repositories/repositories.dart';
 //==============================================================================
 // SPOCART — Address controller
 //------------------------------------------------------------------------------
-// Saved delivery addresses with a single default. Persisted locally.
+// Saved delivery addresses with a single default.
 //==============================================================================
 
 class AddressController extends ChangeNotifier {
@@ -47,6 +47,8 @@ class AddressController extends ChangeNotifier {
     try {
       _addresses = List<Address>.of(await _repository.fetchAddresses());
       _loaded = true;
+    } on AppException catch (e) {
+      _error = e.message;
     } catch (_) {
       _error = 'Could not load your addresses.';
     } finally {
@@ -55,40 +57,40 @@ class AddressController extends ChangeNotifier {
     }
   }
 
-  /// Adds or updates [address]. The first address ever saved becomes default.
+  /// Adds or updates [address]. Throws [AppException].
   Future<Address> save(Address address) async {
-    final int i = _addresses.indexWhere((a) => a.id == address.id);
-    Address next = address;
-    if (_addresses.isEmpty) next = next.copyWith(isDefault: true);
-    if (next.isDefault) {
-      _addresses =
-          _addresses.map((a) => a.copyWith(isDefault: false)).toList();
+    final Address saved = await _repository.save(address);
+    if (saved.isDefault) {
+      _addresses = _addresses.map((a) => a.copyWith(isDefault: false)).toList();
     }
+    final int i = _addresses.indexWhere((a) => a.id == saved.id || a.id == address.id);
     if (i >= 0) {
-      _addresses[i] = next;
+      _addresses[i] = saved;
     } else {
-      _addresses.add(next);
+      _addresses.add(saved);
     }
+    if (_addresses.length == 1 && !_addresses.first.isDefault) {
+      _addresses[0] = _addresses.first.copyWith(isDefault: true);
+    }
+    _loaded = true;
     notifyListeners();
-    await _repository.saveAll(_addresses);
-    return next;
+    return saved;
   }
 
   Future<void> setDefault(String id) async {
-    _addresses =
-        _addresses.map((a) => a.copyWith(isDefault: a.id == id)).toList();
+    await _repository.setDefault(id);
+    _addresses = _addresses.map((a) => a.copyWith(isDefault: a.id == id)).toList();
     notifyListeners();
-    await _repository.saveAll(_addresses);
   }
 
   Future<void> remove(String id) async {
+    await _repository.remove(id);
     final bool wasDefault = byId(id)?.isDefault ?? false;
     _addresses.removeWhere((a) => a.id == id);
     if (wasDefault && _addresses.isNotEmpty) {
       _addresses[0] = _addresses[0].copyWith(isDefault: true);
     }
     notifyListeners();
-    await _repository.saveAll(_addresses);
   }
 
   void reset() {

@@ -1,6 +1,8 @@
 import 'package:flutter/widgets.dart';
 
+import '../core/network/api_client.dart';
 import '../data/local/local_store.dart';
+import '../data/repositories/http_repositories.dart';
 import '../data/repositories/repositories.dart';
 import '../state/address_controller.dart';
 import '../state/cart_controller.dart';
@@ -16,11 +18,8 @@ import '../state/team_controller.dart';
 // SPOCART — Composition root
 //------------------------------------------------------------------------------
 // AppServices builds every repository + controller once; AppScope exposes them
-// to the widget tree. Screens read `AppScope.of(context).cart` etc. and rebuild
-// through ListenableBuilder on the controller they care about — no global
-// rebuilds, no external state package.
-//
-// Swap the Demo* repositories here when the SPOCART API is available.
+// to the widget tree. `AppServices.http` talks to the SPOCART API (default);
+// `AppServices.demo` runs fully on-device for tests and offline reviews.
 //==============================================================================
 
 /// Bottom navigation destinations of the Home shell, in display order.
@@ -29,6 +28,7 @@ enum HomeTab { home, categories, cart, orders, account }
 class AppServices {
   AppServices._({
     required this.store,
+    required this.isDemo,
     required this.session,
     required this.catalog,
     required this.cart,
@@ -39,8 +39,43 @@ class AppServices {
     required this.quotes,
     required this.settings,
     required this.team,
+    this.api,
   });
 
+
+  /// Real backend: PostgreSQL + Razorpay through the SPOCART API.
+  factory AppServices.http(LocalStore store, {ApiClient? client}) {
+    final ApiClient api = client ?? ApiClient();
+    final CatalogController catalog = CatalogController(HttpCatalogRepository(api));
+    final CartStorage cartStorage = CartStorage(store);
+    final NotificationsController notifications =
+        NotificationsController(HttpNotificationRepository(api));
+    final AppServices services = AppServices._(
+      store: store,
+      isDemo: false,
+      api: api,
+      session: SessionController(HttpAuthRepository(api, store)),
+      catalog: catalog,
+      cart: CartController(cartStorage, catalog),
+      wishlist: WishlistController(cartStorage),
+      orders: OrdersController(HttpOrderRepository(api), notifications),
+      addresses: AddressController(HttpAddressRepository(api)),
+      notifications: notifications,
+      quotes: QuotesController(HttpQuoteRepository(api), notifications),
+      settings: SettingsController(store),
+      team: TeamController(HttpTeamRepository(api)),
+    );
+    // A 401 means the token is dead server-side: drop the session and let the
+    // app fall back to Login.
+    api.onUnauthorized = () {
+      services.session.signOut();
+      services._resetAccountState();
+      services.sessionExpired.value = services.sessionExpired.value + 1;
+    };
+    return services;
+  }
+
+  /// On-device demo backend (no server, no Razorpay).
   factory AppServices.demo(LocalStore store) {
     final AccountKey account = AccountKey();
     final CatalogController catalog =
@@ -48,33 +83,36 @@ class AppServices {
     final CartStorage cartStorage = CartStorage(store);
     final NotificationsController notifications = NotificationsController(
       DemoNotificationRepository(store, account),
+      localEvents: true,
     );
     return AppServices._(
       store: store,
+      isDemo: true,
       session: SessionController(DemoAuthRepository(store, account)),
       catalog: catalog,
       cart: CartController(cartStorage, catalog),
       wishlist: WishlistController(cartStorage),
-      orders: OrdersController(
-        DemoOrderRepository(store, account),
-        notifications,
-      ),
+      orders: OrdersController(DemoOrderRepository(store, account), notifications),
       addresses: AddressController(DemoAddressRepository(store, account)),
       notifications: notifications,
-      quotes: QuotesController(
-        DemoQuoteRepository(store, account),
-        notifications,
-      ),
+      quotes: QuotesController(DemoQuoteRepository(store, account), notifications),
       settings: SettingsController(store),
       team: TeamController(DemoTeamRepository(store, account)),
     );
   }
 
   final LocalStore store;
+  final bool isDemo;
 
-  /// The bottom-navigation tab the Home shell should show. Deep screens
-  /// ("Continue Shopping", "View Orders") set it before popping to the root.
+  /// The HTTP client (null in demo mode).
+  final ApiClient? api;
+
+  /// The bottom-navigation tab the Home shell should show.
   final ValueNotifier<HomeTab> homeTab = ValueNotifier<HomeTab>(HomeTab.home);
+
+  /// Bumped when the server rejects the session; the app root listens and
+  /// returns to Login.
+  final ValueNotifier<int> sessionExpired = ValueNotifier<int>(0);
 
   final SessionController session;
   final CatalogController catalog;
@@ -97,11 +135,14 @@ class AppServices {
     ]);
   }
 
-  /// Signs out and clears every per-account controller. Account data stays on
-  /// the device under its own namespace, so signing back in restores it; the
-  /// cart and wishlist are device-local shopping state and are kept.
+  /// Signs out and clears every per-account controller. Cart and wishlist are
+  /// device-local shopping state and are kept.
   Future<void> signOut() async {
     await session.signOut();
+    _resetAccountState();
+  }
+
+  void _resetAccountState() {
     orders.reset();
     addresses.reset();
     notifications.reset();
@@ -111,6 +152,7 @@ class AppServices {
 
   void dispose() {
     homeTab.dispose();
+    sessionExpired.dispose();
     session.dispose();
     catalog.dispose();
     cart.dispose();
@@ -121,6 +163,7 @@ class AppServices {
     quotes.dispose();
     settings.dispose();
     team.dispose();
+    api?.close();
   }
 }
 

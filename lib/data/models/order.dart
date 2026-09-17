@@ -77,10 +77,25 @@ extension PaymentMethodMeta on PaymentMethod {
         (m) => m.name == name,
         orElse: () => PaymentMethod.upi,
       );
+
+  /// What the API expects: every online method is one Razorpay checkout.
+  String get apiName => this == PaymentMethod.payLater ? 'payLater' : 'razorpay';
+
+  /// Maps the API's `paymentMethod` + Razorpay `payment.method` back to a value.
+  static PaymentMethod fromApi(String? method, String? razorpayMethod) {
+    if (method == 'payLater') return PaymentMethod.payLater;
+    return switch (razorpayMethod) {
+      'card' => PaymentMethod.card,
+      'netbanking' => PaymentMethod.netBanking,
+      'wallet' => PaymentMethod.wallet,
+      _ => PaymentMethod.upi,
+    };
+  }
 }
 
 /// Order pipeline. The index doubles as the tracking-timeline position.
 enum OrderStatus {
+  paymentPending,
   placed,
   packed,
   dispatched,
@@ -91,6 +106,7 @@ enum OrderStatus {
 
 extension OrderStatusMeta on OrderStatus {
   String get label => switch (this) {
+        OrderStatus.paymentPending => 'Payment Pending',
         OrderStatus.placed => 'Processing',
         OrderStatus.packed => 'Packed',
         OrderStatus.dispatched => 'Shipped',
@@ -101,6 +117,7 @@ extension OrderStatusMeta on OrderStatus {
 
   /// Title used on the tracking timeline.
   String get stepTitle => switch (this) {
+        OrderStatus.paymentPending => 'Payment Pending',
         OrderStatus.placed => 'Order Placed',
         OrderStatus.packed => 'Packed',
         OrderStatus.dispatched => 'Dispatched',
@@ -110,6 +127,7 @@ extension OrderStatusMeta on OrderStatus {
       };
 
   Color get color => switch (this) {
+        OrderStatus.paymentPending => AppColors.red,
         OrderStatus.placed => AppColors.warning,
         OrderStatus.packed => AppColors.info,
         OrderStatus.dispatched => AppColors.info,
@@ -119,6 +137,7 @@ extension OrderStatusMeta on OrderStatus {
       };
 
   IconData get icon => switch (this) {
+        OrderStatus.paymentPending => Icons.hourglass_top_rounded,
         OrderStatus.placed => Icons.receipt_long_outlined,
         OrderStatus.packed => Icons.inventory_2_outlined,
         OrderStatus.dispatched => Icons.local_shipping_outlined,
@@ -128,7 +147,10 @@ extension OrderStatusMeta on OrderStatus {
       };
 
   bool get isPending =>
-      this == OrderStatus.placed || this == OrderStatus.packed;
+      this == OrderStatus.paymentPending ||
+      this == OrderStatus.placed ||
+      this == OrderStatus.packed;
+  bool get awaitingPayment => this == OrderStatus.paymentPending;
   bool get isShipped =>
       this == OrderStatus.dispatched || this == OrderStatus.outForDelivery;
   bool get isOpen => this != OrderStatus.delivered && this != OrderStatus.cancelled;
@@ -283,8 +305,12 @@ class Order {
         total: (json['total'] as num?)?.toDouble() ?? 0,
         address:
             Address.fromJson(Map<String, dynamic>.from(json['address'] as Map)),
-        paymentMethod:
-            PaymentMethodMeta.fromName(json['paymentMethod'] as String?),
+        paymentMethod: json['paymentMethod'] == 'razorpay'
+            ? PaymentMethodMeta.fromApi(
+                'razorpay',
+                (json['payment'] as Map?)?['method'] as String?,
+              )
+            : PaymentMethodMeta.fromName(json['paymentMethod'] as String?),
         paid: json['paid'] as bool? ?? true,
         etaStart: DateTime.parse(json['etaStart'] as String),
         etaEnd: DateTime.parse(json['etaEnd'] as String),
@@ -310,4 +336,106 @@ class Invoice {
   final DateTime date;
   final double amount;
   final bool paid;
+
+  factory Invoice.fromJson(Map<String, dynamic> json) => Invoice(
+        id: json['id'] as String,
+        orderId: json['orderId'] as String,
+        date: DateTime.parse(json['date'] as String),
+        amount: (json['amount'] as num).toDouble(),
+        paid: json['paid'] as bool? ?? false,
+      );
+}
+
+/// Razorpay checkout parameters returned by the API when an order needs an
+/// online payment. Null for Pay Later orders.
+class CheckoutSession {
+  const CheckoutSession({
+    required this.keyId,
+    required this.razorpayOrderId,
+    required this.amountPaise,
+    required this.description,
+    required this.contact,
+    required this.email,
+    required this.name,
+  });
+
+  final String keyId;
+  final String razorpayOrderId;
+  final int amountPaise;
+  final String description;
+  final String contact;
+  final String email;
+  final String name;
+
+  factory CheckoutSession.fromJson(Map<String, dynamic> json) {
+    final Map<String, dynamic> prefill =
+        Map<String, dynamic>.from(json['prefill'] as Map? ?? const {});
+    return CheckoutSession(
+      keyId: json['keyId'] as String,
+      razorpayOrderId: json['razorpayOrderId'] as String,
+      amountPaise: (json['amount'] as num).toInt(),
+      description: json['description'] as String? ?? 'SPOCART order',
+      contact: prefill['contact'] as String? ?? '',
+      email: prefill['email'] as String? ?? '',
+      name: prefill['name'] as String? ?? '',
+    );
+  }
+}
+
+/// Result of placing an order: the order, plus a checkout when payment is due.
+class PlaceOrderResult {
+  const PlaceOrderResult({required this.order, this.checkout});
+
+  final Order order;
+  final CheckoutSession? checkout;
+}
+
+/// Ids Razorpay hands back after a successful checkout.
+class PaymentProof {
+  const PaymentProof({
+    required this.razorpayOrderId,
+    required this.razorpayPaymentId,
+    required this.razorpaySignature,
+  });
+
+  final String razorpayOrderId;
+  final String razorpayPaymentId;
+  final String razorpaySignature;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'razorpayOrderId': razorpayOrderId,
+        'razorpayPaymentId': razorpayPaymentId,
+        'razorpaySignature': razorpaySignature,
+      };
+}
+
+/// The six Business Dashboard figures, computed by the API.
+class DashboardStats {
+  const DashboardStats({
+    required this.totalPurchases,
+    required this.pendingOrders,
+    required this.outstandingPayment,
+    required this.savedQuotations,
+    required this.repeatOrders,
+    required this.availableCredit,
+    required this.creditLimit,
+  });
+
+  final double totalPurchases;
+  final int pendingOrders;
+  final double outstandingPayment;
+  final int savedQuotations;
+  final int repeatOrders;
+  final double availableCredit;
+  final double creditLimit;
+
+  factory DashboardStats.fromJson(Map<String, dynamic> json) => DashboardStats(
+        totalPurchases: (json['totalPurchases'] as num?)?.toDouble() ?? 0,
+        pendingOrders: (json['pendingOrders'] as num?)?.toInt() ?? 0,
+        outstandingPayment: (json['outstandingPayment'] as num?)?.toDouble() ?? 0,
+        savedQuotations: (json['savedQuotations'] as num?)?.toInt() ?? 0,
+        repeatOrders: (json['repeatOrders'] as num?)?.toInt() ?? 0,
+        availableCredit: (json['availableCredit'] as num?)?.toDouble() ?? 0,
+        creditLimit: (json['creditLimit'] as num?)?.toDouble() ?? 0,
+      );
 }

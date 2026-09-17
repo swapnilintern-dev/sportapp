@@ -80,7 +80,8 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
     setState(() => _saving = true);
     try {
       final Address address = Address(
-        id: widget.existing?.id ?? Ids.local(),
+        // 'local-' marks an unsaved address; the API assigns the real id.
+        id: widget.existing?.id ?? 'local-${Ids.local()}',
         contactName: _contact.text.trim(),
         businessName: _business.text.trim(),
         line1: _line1.text.trim(),

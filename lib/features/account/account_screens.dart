@@ -181,7 +181,7 @@ class _TeamMembersScreenState extends State<TeamMembersScreen> {
       builder: (context) => const _TeamMemberForm(),
     );
     if (member == null || !mounted) return;
-    await AppScope.of(context).team.save(member);
+    await AppScope.of(context).team.add(member);
     if (mounted) {
       showAppSnackBar(context, '${member.name} added to your team',
           tone: SnackTone.success);

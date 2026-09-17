@@ -10,15 +10,15 @@ import '../sources/demo_catalog.dart';
 //==============================================================================
 // SPOCART — Repositories (the backend seam)
 //------------------------------------------------------------------------------
-// Screens and controllers only ever talk to these abstract repositories. The
-// `Demo*` implementations below run entirely on-device (in-memory catalogue +
-// LocalStore persistence) because the SPOCART API does not exist yet.
+// Controllers only ever talk to these abstract repositories. Two
+// implementations exist for each:
 //
-// To connect the real backend: implement each interface over HTTP and swap the
-// constructors in lib/app/app_services.dart. Nothing above this layer changes.
+//   • Http*  (lib/data/repositories/http_repositories.dart) — the SPOCART API
+//     on PostgreSQL + Razorpay. Used by default.
+//   • Demo*  (this file) — fully on-device, no server. Used by the widget
+//     tests and when the app runs with --dart-define=USE_DEMO_BACKEND=true.
 //
-// Every demo call awaits a short latency so loading states are real, and every
-// failure surfaces as [AppException] with a user-safe message.
+// Every failure surfaces as [AppException] with a user-safe message.
 //==============================================================================
 
 class AppException implements Exception {
@@ -33,9 +33,7 @@ class AppException implements Exception {
 Future<void> _latency([int ms = 350]) =>
     Future<void>.delayed(Duration(milliseconds: ms));
 
-/// Identifies whose data the per-account repositories read and write. Set by
-/// the session layer on sign-in; keys are namespaced so two buyers signing in
-/// on the same device never see each other's orders or addresses.
+/// Identifies whose data the per-account demo repositories read and write.
 class AccountKey {
   String? mobile;
 
@@ -79,16 +77,22 @@ class OtpChallenge {
   final String mobile;
   final DateTime expiresAt;
 
-  /// Only set by the demo backend, which has no SMS gateway. The OTP screen
-  /// shows it so the flow can be completed on-device. Null with a real API.
+  /// Only set by the demo backend, which has no SMS gateway. Null with the API.
   final String? demoCode;
 }
 
 abstract class AuthRepository {
   Future<OtpChallenge> sendOtp(String mobile);
   Future<UserSession> verifyOtp(String mobile, String code);
+
+  /// The cached session from the last sign-in, or null. Never hits the network.
   Future<UserSession?> restoreSession();
-  Future<void> saveSession(UserSession session);
+
+  /// Fresh copy of the session from the server (profile, credit limit).
+  /// Returns null when the session is no longer valid.
+  Future<UserSession?> refreshSession();
+
+  Future<UserSession> saveProfile(BusinessProfile profile);
   Future<void> signOut();
 }
 
@@ -103,8 +107,7 @@ class DemoAuthRepository implements AuthRepository {
   @override
   Future<OtpChallenge> sendOtp(String mobile) async {
     await _latency(600);
-    final String code =
-        (100000 + _random.nextInt(900000)).toString();
+    final String code = (100000 + _random.nextInt(900000)).toString();
     _pendingCodes[mobile] = code;
     return OtpChallenge(
       mobile: mobile,
@@ -125,7 +128,6 @@ class DemoAuthRepository implements AuthRepository {
     }
     _pendingCodes.remove(mobile);
 
-    // A returning buyer keeps their business profile.
     final UserSession? previous = await restoreSession();
     final UserSession session = UserSession(
       mobile: mobile,
@@ -133,7 +135,7 @@ class DemoAuthRepository implements AuthRepository {
       profile: previous?.mobile == mobile ? previous?.profile : null,
       creditLimit: previous?.creditLimit ?? 100000,
     );
-    await saveSession(session);
+    await _save(session);
     return session;
   }
 
@@ -151,7 +153,19 @@ class DemoAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<void> saveSession(UserSession session) {
+  Future<UserSession?> refreshSession() => restoreSession();
+
+  @override
+  Future<UserSession> saveProfile(BusinessProfile profile) async {
+    await _latency(400);
+    final UserSession? current = await restoreSession();
+    if (current == null) throw const AppException('You are not signed in.');
+    final UserSession updated = current.copyWith(profile: profile);
+    await _save(updated);
+    return updated;
+  }
+
+  Future<void> _save(UserSession session) {
     _account.mobile = session.mobile;
     return _store.writeJson(StoreKeys.session, session.toJson());
   }
@@ -164,12 +178,37 @@ class DemoAuthRepository implements AuthRepository {
 }
 
 //------------------------------------------------------------------------------
-// Orders & invoices
+// Orders, payments, invoices, dashboard
 //------------------------------------------------------------------------------
+
+/// What the app sends to place an order. [snapshot] is the fully priced order
+/// the cart produced; the API re-prices from [lines] and ignores the totals.
+class OrderRequest {
+  const OrderRequest({
+    required this.snapshot,
+    required this.lines,
+    required this.addressId,
+    required this.paymentMethod,
+  });
+
+  final Order snapshot;
+  final List<CartLine> lines;
+  final String addressId;
+  final PaymentMethod paymentMethod;
+}
+
 abstract class OrderRepository {
   Future<List<Order>> fetchOrders();
-  Future<Order> placeOrder(Order draft);
-  Future<void> saveAll(List<Order> orders);
+  Future<PlaceOrderResult> placeOrder(OrderRequest request);
+
+  /// Confirms a Razorpay checkout; returns the paid order.
+  Future<Order> verifyPayment(PaymentProof proof);
+
+  /// A fresh checkout for an order still awaiting payment.
+  Future<PlaceOrderResult> retryPayment(String orderId);
+
+  Future<List<Invoice>> fetchInvoices();
+  Future<DashboardStats> fetchDashboard({required double creditLimit});
 }
 
 class DemoOrderRepository implements OrderRepository {
@@ -180,20 +219,23 @@ class DemoOrderRepository implements OrderRepository {
 
   String get _key => _account.scoped(StoreKeys.orders);
 
-  /// Demo fulfilment: with no warehouse system behind the app, an order moves
-  /// through the pipeline on a compressed clock so tracking has something to
-  /// show. Replace with server-driven status when the API lands.
+  /// Demo fulfilment: with no warehouse behind the app, an order moves through
+  /// the pipeline on a compressed clock so tracking has something to show.
   static const List<Duration> _stageAfter = <Duration>[
-    Duration.zero, // placed
-    Duration(minutes: 3), // packed
-    Duration(minutes: 15), // dispatched
-    Duration(hours: 2), // out for delivery
-    Duration(hours: 8), // delivered
+    Duration.zero,
+    Duration(minutes: 3),
+    Duration(minutes: 15),
+    Duration(hours: 2),
+    Duration(hours: 8),
   ];
 
   @override
   Future<List<Order>> fetchOrders() async {
     await _latency(400);
+    return _load();
+  }
+
+  Future<List<Order>> _load() async {
     final List<Map<String, dynamic>>? raw = await _store.readList(_key);
     if (raw == null) return const <Order>[];
     final List<Order> orders = <Order>[];
@@ -209,7 +251,10 @@ class DemoOrderRepository implements OrderRepository {
   }
 
   Order _advance(Order order) {
-    if (order.status == OrderStatus.cancelled) return order;
+    if (order.status == OrderStatus.cancelled ||
+        order.status == OrderStatus.paymentPending) {
+      return order;
+    }
     final Duration elapsed = DateTime.now().difference(order.placedAt);
     int stage = 0;
     for (int i = 0; i < _stageAfter.length; i++) {
@@ -224,18 +269,70 @@ class DemoOrderRepository implements OrderRepository {
   }
 
   @override
-  Future<Order> placeOrder(Order draft) async {
+  Future<PlaceOrderResult> placeOrder(OrderRequest request) async {
     await _latency(900);
+    // No gateway in demo mode: online orders are treated as paid on the spot.
+    final bool credit = request.paymentMethod == PaymentMethod.payLater;
+    final Order order =
+        request.snapshot.copyWith(status: OrderStatus.placed, paid: !credit);
     final List<Map<String, dynamic>> raw =
         await _store.readList(_key) ?? <Map<String, dynamic>>[];
-    raw.insert(0, draft.toJson());
+    raw.insert(0, order.toJson());
     await _store.writeJson(_key, raw);
-    return draft;
+    return PlaceOrderResult(order: order);
   }
 
   @override
-  Future<void> saveAll(List<Order> orders) =>
-      _store.writeJson(_key, orders.map((o) => o.toJson()).toList());
+  Future<Order> verifyPayment(PaymentProof proof) async {
+    throw const AppException('Online payment needs the SPOCART server.');
+  }
+
+  @override
+  Future<PlaceOrderResult> retryPayment(String orderId) async {
+    throw const AppException('Online payment needs the SPOCART server.');
+  }
+
+  @override
+  Future<List<Invoice>> fetchInvoices() async {
+    final List<Order> orders = await _load();
+    return orders
+        .where((o) => o.status != OrderStatus.cancelled)
+        .map((o) => Invoice(
+              id: o.invoiceId,
+              orderId: o.id,
+              date: o.placedAt,
+              amount: o.total,
+              paid: o.paid,
+            ))
+        .toList(growable: false);
+  }
+
+  @override
+  Future<DashboardStats> fetchDashboard({required double creditLimit}) async {
+    final List<Order> orders = await _load();
+    final List<Order> live =
+        orders.where((o) => o.status != OrderStatus.cancelled).toList();
+    final double outstanding = live
+        .where((o) => !o.paid)
+        .fold(0, (sum, o) => sum + o.total);
+    final Set<String> seen = <String>{};
+    int repeats = 0;
+    for (final Order o in live.reversed) {
+      if (o.lines.any((l) => seen.contains(l.productId))) repeats++;
+      seen.addAll(o.lines.map((l) => l.productId));
+    }
+    final List<Map<String, dynamic>>? quotes =
+        await _store.readList(_account.scoped(StoreKeys.quotes));
+    return DashboardStats(
+      totalPurchases: live.fold(0, (sum, o) => sum + o.total),
+      pendingOrders: live.where((o) => o.status.isOpen).length,
+      outstandingPayment: outstanding,
+      savedQuotations: quotes?.length ?? 0,
+      repeatOrders: repeats,
+      availableCredit: (creditLimit - outstanding).clamp(0, creditLimit),
+      creditLimit: creditLimit,
+    );
+  }
 }
 
 //------------------------------------------------------------------------------
@@ -243,7 +340,11 @@ class DemoOrderRepository implements OrderRepository {
 //------------------------------------------------------------------------------
 abstract class AddressRepository {
   Future<List<Address>> fetchAddresses();
-  Future<void> saveAll(List<Address> addresses);
+
+  /// Creates (new id) or updates (existing id). Returns the saved row.
+  Future<Address> save(Address address);
+  Future<void> remove(String id);
+  Future<void> setDefault(String id);
 }
 
 class DemoAddressRepository implements AddressRepository {
@@ -254,17 +355,55 @@ class DemoAddressRepository implements AddressRepository {
 
   String get _key => _account.scoped(StoreKeys.addresses);
 
+  Future<List<Address>> _load() async {
+    final List<Map<String, dynamic>>? raw = await _store.readList(_key);
+    return raw == null ? <Address>[] : raw.map(Address.fromJson).toList();
+  }
+
+  Future<void> _write(List<Address> list) =>
+      _store.writeJson(_key, list.map((a) => a.toJson()).toList());
+
   @override
   Future<List<Address>> fetchAddresses() async {
     await _latency(250);
-    final List<Map<String, dynamic>>? raw = await _store.readList(_key);
-    if (raw == null) return const <Address>[];
-    return raw.map(Address.fromJson).toList();
+    return _load();
   }
 
   @override
-  Future<void> saveAll(List<Address> addresses) =>
-      _store.writeJson(_key, addresses.map((a) => a.toJson()).toList());
+  Future<Address> save(Address address) async {
+    await _latency(300);
+    final List<Address> list = await _load();
+    final int i = list.indexWhere((a) => a.id == address.id);
+    Address next = address;
+    if (list.isEmpty) next = next.copyWith(isDefault: true);
+    if (next.isDefault) {
+      for (int j = 0; j < list.length; j++) {
+        list[j] = list[j].copyWith(isDefault: false);
+      }
+    }
+    if (i >= 0) {
+      list[i] = next;
+    } else {
+      list.add(next);
+    }
+    await _write(list);
+    return next;
+  }
+
+  @override
+  Future<void> remove(String id) async {
+    final List<Address> list = await _load();
+    final bool wasDefault = list.any((a) => a.id == id && a.isDefault);
+    list.removeWhere((a) => a.id == id);
+    if (wasDefault && list.isNotEmpty) list[0] = list[0].copyWith(isDefault: true);
+    await _write(list);
+  }
+
+  @override
+  Future<void> setDefault(String id) async {
+    final List<Address> list = await _load();
+    await _write(list.map((a) => a.copyWith(isDefault: a.id == id)).toList());
+  }
 }
 
 //------------------------------------------------------------------------------
@@ -272,7 +411,8 @@ class DemoAddressRepository implements AddressRepository {
 //------------------------------------------------------------------------------
 abstract class TeamRepository {
   Future<List<TeamMember>> fetchMembers();
-  Future<void> saveAll(List<TeamMember> members);
+  Future<TeamMember> add(TeamMember member);
+  Future<void> remove(String id);
 }
 
 class DemoTeamRepository implements TeamRepository {
@@ -283,25 +423,54 @@ class DemoTeamRepository implements TeamRepository {
 
   String get _key => _account.scoped(StoreKeys.team);
 
+  Future<List<TeamMember>> _load() async {
+    final List<Map<String, dynamic>>? raw = await _store.readList(_key);
+    return raw == null ? <TeamMember>[] : raw.map(TeamMember.fromJson).toList();
+  }
+
+  Future<void> _write(List<TeamMember> list) =>
+      _store.writeJson(_key, list.map((m) => m.toJson()).toList());
+
   @override
   Future<List<TeamMember>> fetchMembers() async {
     await _latency(250);
-    final List<Map<String, dynamic>>? raw = await _store.readList(_key);
-    if (raw == null) return const <TeamMember>[];
-    return raw.map(TeamMember.fromJson).toList();
+    return _load();
   }
 
   @override
-  Future<void> saveAll(List<TeamMember> members) =>
-      _store.writeJson(_key, members.map((m) => m.toJson()).toList());
+  Future<TeamMember> add(TeamMember member) async {
+    final List<TeamMember> list = await _load()
+      ..add(member);
+    await _write(list);
+    return member;
+  }
+
+  @override
+  Future<void> remove(String id) async {
+    final List<TeamMember> list = await _load()
+      ..removeWhere((m) => m.id == id);
+    await _write(list);
+  }
 }
 
 //------------------------------------------------------------------------------
 // Notifications
 //------------------------------------------------------------------------------
+class NotificationPage {
+  const NotificationPage({required this.items, required this.unreadCount});
+
+  final List<AppNotification> items;
+  final int unreadCount;
+}
+
 abstract class NotificationRepository {
-  Future<List<AppNotification>> fetchAll();
-  Future<void> saveAll(List<AppNotification> items);
+  Future<NotificationPage> fetchAll();
+  Future<void> markRead(String id);
+  Future<void> markAllRead();
+  Future<void> clearAll();
+
+  /// Demo only: the server writes notifications; the demo app writes its own.
+  Future<void> push(AppNotification notification) async {}
 }
 
 class DemoNotificationRepository implements NotificationRepository {
@@ -312,26 +481,74 @@ class DemoNotificationRepository implements NotificationRepository {
 
   String get _key => _account.scoped(StoreKeys.notifications);
 
-  @override
-  Future<List<AppNotification>> fetchAll() async {
-    await _latency(250);
+  Future<List<AppNotification>> _load() async {
     final List<Map<String, dynamic>>? raw = await _store.readList(_key);
-    if (raw == null) return const <AppNotification>[];
-    return raw.map(AppNotification.fromJson).toList();
+    final List<AppNotification> list =
+        raw == null ? <AppNotification>[] : raw.map(AppNotification.fromJson).toList();
+    list.sort((a, b) => b.time.compareTo(a.time));
+    return list;
+  }
+
+  Future<void> _write(List<AppNotification> list) =>
+      _store.writeJson(_key, list.map((n) => n.toJson()).toList());
+
+  @override
+  Future<NotificationPage> fetchAll() async {
+    await _latency(250);
+    final List<AppNotification> list = await _load();
+    return NotificationPage(
+      items: list,
+      unreadCount: list.where((n) => !n.read).length,
+    );
   }
 
   @override
-  Future<void> saveAll(List<AppNotification> items) =>
-      _store.writeJson(_key, items.map((n) => n.toJson()).toList());
+  Future<void> push(AppNotification notification) async {
+    final List<AppNotification> list = await _load()
+      ..insert(0, notification);
+    await _write(list);
+  }
+
+  @override
+  Future<void> markRead(String id) async {
+    final List<AppNotification> list = await _load();
+    await _write(list.map((n) => n.id == id ? n.copyWith(read: true) : n).toList());
+  }
+
+  @override
+  Future<void> markAllRead() async {
+    final List<AppNotification> list = await _load();
+    await _write(list.map((n) => n.copyWith(read: true)).toList());
+  }
+
+  @override
+  Future<void> clearAll() => _write(<AppNotification>[]);
 }
 
 //------------------------------------------------------------------------------
 // Quotations
 //------------------------------------------------------------------------------
+class QuoteDraft {
+  const QuoteDraft({
+    required this.kind,
+    required this.items,
+    required this.notes,
+    this.designFilePath,
+    this.designFileName,
+  });
+
+  final QuoteKind kind;
+  final List<QuoteItem> items;
+  final String notes;
+
+  /// Local path of the artwork picked by the buyer (uploaded by the repo).
+  final String? designFilePath;
+  final String? designFileName;
+}
+
 abstract class QuoteRepository {
   Future<List<QuoteRequest>> fetchAll();
-  Future<QuoteRequest> submit(QuoteRequest draft);
-  Future<void> saveAll(List<QuoteRequest> items);
+  Future<QuoteRequest> submit(QuoteDraft draft);
 }
 
 class DemoQuoteRepository implements QuoteRepository {
@@ -353,22 +570,27 @@ class DemoQuoteRepository implements QuoteRepository {
   }
 
   @override
-  Future<QuoteRequest> submit(QuoteRequest draft) async {
+  Future<QuoteRequest> submit(QuoteDraft draft) async {
     await _latency(800);
+    final DateTime now = DateTime.now();
+    final QuoteRequest quote = QuoteRequest(
+      id: Ids.quote(now),
+      kind: draft.kind,
+      createdAt: now,
+      items: draft.items,
+      notes: draft.notes,
+      designFileName: draft.designFileName,
+    );
     final List<Map<String, dynamic>> raw =
         await _store.readList(_key) ?? <Map<String, dynamic>>[];
-    raw.insert(0, draft.toJson());
+    raw.insert(0, quote.toJson());
     await _store.writeJson(_key, raw);
-    return draft;
+    return quote;
   }
-
-  @override
-  Future<void> saveAll(List<QuoteRequest> items) =>
-      _store.writeJson(_key, items.map((q) => q.toJson()).toList());
 }
 
 //------------------------------------------------------------------------------
-// Cart & wishlist persistence (pure local state, no server round-trip)
+// Cart & wishlist persistence (device-local in both modes)
 //------------------------------------------------------------------------------
 class CartStorage {
   CartStorage(this._store);
@@ -392,23 +614,17 @@ class CartStorage {
 }
 
 //------------------------------------------------------------------------------
-// Id generation
+// Id generation (demo mode; the API assigns real ids)
 //------------------------------------------------------------------------------
 abstract final class Ids {
   static final Random _random = Random();
 
   static String _seq() => (1000 + _random.nextInt(9000)).toString();
 
-  /// SC-2025-0345
   static String order(DateTime now) => 'SC-${now.year}-${_seq()}';
-
-  /// INV-2025-0132
   static String invoice(DateTime now) => 'INV-${now.year}-${_seq()}';
-
-  /// QT-2025-0871
   static String quote(DateTime now) => 'QT-${now.year}-${_seq()}';
 
-  /// Opaque local id for addresses / notifications.
   static String local() =>
       '${DateTime.now().microsecondsSinceEpoch}-${_random.nextInt(1 << 20)}';
 }

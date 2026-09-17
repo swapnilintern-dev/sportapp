@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/utils/icon_names.dart';
+
 //==============================================================================
 // SPOCART — Catalogue models
 //------------------------------------------------------------------------------
@@ -24,6 +26,16 @@ class ProductCategory {
 
   /// Filter chips shown on the category listing (e.g. Bats, Balls, Gear).
   final List<String> subcategories;
+
+  factory ProductCategory.fromJson(Map<String, dynamic> json) => ProductCategory(
+        id: json['id'] as String,
+        name: json['name'] as String? ?? '',
+        icon: iconFromName(json['icon'] as String?),
+        imageAsset: json['imageUrl'] as String? ?? '',
+        subcategories: (json['subcategories'] as List<dynamic>? ?? const [])
+            .map((e) => e.toString())
+            .toList(),
+      );
 }
 
 class PriceTier {
@@ -32,6 +44,11 @@ class PriceTier {
   /// Applies once the ordered quantity reaches [minQty] units.
   final int minQty;
   final double unitPrice;
+
+  factory PriceTier.fromJson(Map<String, dynamic> json) => PriceTier(
+        minQty: (json['minQty'] as num).toInt(),
+        unitPrice: (json['unitPrice'] as num).toDouble(),
+      );
 }
 
 class ProductFeature {
@@ -39,6 +56,11 @@ class ProductFeature {
 
   final String label;
   final IconData icon;
+
+  factory ProductFeature.fromJson(Map<String, dynamic> json) => ProductFeature(
+        label: json['label'] as String? ?? '',
+        icon: iconFromName(json['icon'] as String?, fallback: Icons.check_circle_outline),
+      );
 }
 
 class Product {
@@ -90,6 +112,33 @@ class Product {
   final bool customisable;
 
   String get primaryImage => images.isEmpty ? '' : images.first;
+
+  factory Product.fromJson(Map<String, dynamic> json) {
+    final List<PriceTier> tiers = (json['tiers'] as List<dynamic>? ?? const [])
+        .map((t) => PriceTier.fromJson(Map<String, dynamic>.from(t as Map)))
+        .toList();
+    return Product(
+      id: json['id'] as String,
+      name: json['name'] as String? ?? '',
+      brand: json['brand'] as String? ?? '',
+      categoryId: json['categoryId'] as String? ?? '',
+      subcategory: json['subcategory'] as String? ?? '',
+      unit: json['unit'] as String? ?? 'pc',
+      moq: (json['moq'] as num?)?.toInt() ?? 1,
+      tiers: tiers.isEmpty ? const [PriceTier(minQty: 1, unitPrice: 0)] : tiers,
+      description: json['description'] as String? ?? '',
+      images: (json['images'] as List<dynamic>? ?? const []).map((e) => e.toString()).toList(),
+      features: (json['features'] as List<dynamic>? ?? const [])
+          .map((f) => ProductFeature.fromJson(Map<String, dynamic>.from(f as Map)))
+          .toList(),
+      sizes: (json['sizes'] as List<dynamic>? ?? const []).map((e) => e.toString()).toList(),
+      rating: (json['rating'] as num?)?.toDouble() ?? 0,
+      reviewCount: (json['reviewCount'] as num?)?.toInt() ?? 0,
+      inStock: json['inStock'] as bool? ?? true,
+      popular: json['popular'] as bool? ?? false,
+      customisable: json['customisable'] as bool? ?? false,
+    );
+  }
 
   /// Highest per-unit price (smallest slab).
   double get basePrice => tiers.first.unitPrice;

@@ -57,7 +57,11 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
           body: AsyncStateView<List<Order>>(
             loading: orders.loading,
             error: orders.error,
-            data: orders.loaded ? orders.orders : null,
+            data: orders.loaded
+                ? orders.orders
+                    .where((o) => !o.status.awaitingPayment && o.status != OrderStatus.cancelled)
+                    .toList()
+                : null,
             onRetry: () => orders.load(force: true),
             isEmpty: (list) => list.isEmpty,
             emptyBuilder: (context) => EmptyStateView(

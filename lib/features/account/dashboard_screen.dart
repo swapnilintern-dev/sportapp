@@ -33,6 +33,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final AppServices services = AppScope.of(context);
     services.orders.load();
     services.quotes.load();
+    services.orders
+        .loadDashboard(creditLimit: services.session.session?.creditLimit ?? 0)
+        .catchError((_) {});
   }
 
   Future<void> _refresh() async {
@@ -40,6 +43,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await Future.wait<void>(<Future<void>>[
       services.orders.load(force: true),
       services.quotes.load(force: true),
+      services.orders
+          .loadDashboard(creditLimit: services.session.session?.creditLimit ?? 0)
+          .catchError((_) {}),
     ]);
   }
 
@@ -61,12 +67,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
               onRetry: _refresh,
             );
           }
-          final bool loading = !orders.loaded || !services.quotes.loaded;
-          final double creditLimit =
-              services.session.session?.creditLimit ?? 0;
-          final double available =
-              (creditLimit - orders.outstandingPayment).clamp(0, creditLimit);
-          final List<Order> recent = orders.orders.take(3).toList();
+          final DashboardStats? stats = orders.dashboard;
+          final bool loading = stats == null || !orders.loaded;
+          final List<Order> recent = orders.orders
+              .where((o) => !o.status.awaitingPayment)
+              .take(3)
+              .toList();
 
           return RefreshIndicator(
             color: AppColors.red,
@@ -79,26 +85,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   _StatGrid(
                     loading: loading,
                     stats: [
-                      _Stat('Total Purchases', formatInr(orders.totalPurchases),
+                      _Stat('Total Purchases', formatInr(stats?.totalPurchases ?? 0),
                           Icons.payments_outlined,
                           onTap: () => AppNavigator.backToHome(context,
                               tab: HomeTab.orders)),
-                      _Stat('Pending Orders', '${orders.pendingCount}',
+                      _Stat('Pending Orders', '${stats?.pendingOrders ?? 0}',
                           Icons.pending_actions_outlined,
                           onTap: () => AppNavigator.backToHome(context,
                               tab: HomeTab.orders)),
                       _Stat('Outstanding Payment',
-                          formatInr(orders.outstandingPayment),
+                          formatInr(stats?.outstandingPayment ?? 0),
                           Icons.account_balance_wallet_outlined,
                           onTap: () => AppNavigator.toInvoices(context)),
-                      _Stat('Saved Quotations', '${services.quotes.count}',
+                      _Stat('Saved Quotations', '${stats?.savedQuotations ?? services.quotes.count}',
                           Icons.request_quote_outlined,
                           onTap: () => AppNavigator.toQuotes(context)),
-                      _Stat('Repeat Orders', '${orders.repeatOrderCount}',
+                      _Stat('Repeat Orders', '${stats?.repeatOrders ?? 0}',
                           Icons.repeat_rounded,
                           onTap: () => AppNavigator.backToHome(context,
                               tab: HomeTab.orders)),
-                      _Stat('Available Credit', formatInr(available),
+                      _Stat('Available Credit', formatInr(stats?.availableCredit ?? 0),
                           Icons.credit_score_outlined,
                           onTap: () => AppNavigator.toInvoices(context)),
                     ],

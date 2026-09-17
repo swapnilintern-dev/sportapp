@@ -27,7 +27,8 @@ class SessionController extends ChangeNotifier {
   bool get restored => _restored;
   bool get busy => _busy;
 
-  /// Loads a persisted session at startup. Safe to call more than once.
+  /// Loads the cached session at startup, then refreshes it from the server
+  /// in the background (profile / credit limit may have changed).
   Future<void> restore() async {
     if (_restored) return;
     try {
@@ -37,9 +38,29 @@ class SessionController extends ChangeNotifier {
     }
     _restored = true;
     notifyListeners();
+    if (_session != null) refresh();
   }
 
-  /// Requests an OTP for [mobile] (10 digits). Throws [AppException].
+  Future<void> refresh() async {
+    try {
+      final UserSession? fresh = await _auth.refreshSession();
+      if (fresh != null && _session != null) {
+        _session = fresh;
+        notifyListeners();
+      }
+    } catch (_) {
+      // Offline: keep what we have.
+    }
+  }
+
+  /// Called by the API client on a 401: the token is gone server-side.
+  void expire() {
+    if (_session == null) return;
+    _session = null;
+    _challenge = null;
+    notifyListeners();
+  }
+
   Future<OtpChallenge> sendOtp(String mobile) async {
     _setBusy(true);
     try {
@@ -51,7 +72,6 @@ class SessionController extends ChangeNotifier {
     }
   }
 
-  /// Verifies [code] for the pending challenge. Throws [AppException].
   Future<UserSession> verifyOtp(String code) async {
     final OtpChallenge? challenge = _challenge;
     if (challenge == null) {
@@ -68,15 +88,11 @@ class SessionController extends ChangeNotifier {
     }
   }
 
-  /// Saves the business profile captured on registration / edit profile.
   Future<void> saveProfile(BusinessProfile profile) async {
-    final UserSession? current = _session;
-    if (current == null) throw const AppException('You are not signed in.');
+    if (_session == null) throw const AppException('You are not signed in.');
     _setBusy(true);
     try {
-      final UserSession updated = current.copyWith(profile: profile);
-      await _auth.saveSession(updated);
-      _session = updated;
+      _session = await _auth.saveProfile(profile);
       notifyListeners();
     } finally {
       _setBusy(false);
@@ -84,10 +100,13 @@ class SessionController extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
-    await _auth.signOut();
-    _session = null;
-    _challenge = null;
-    notifyListeners();
+    try {
+      await _auth.signOut();
+    } finally {
+      _session = null;
+      _challenge = null;
+      notifyListeners();
+    }
   }
 
   void _setBusy(bool value) {

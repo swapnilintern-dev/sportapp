@@ -18,7 +18,7 @@ import '../features/catalog/product_list_screen.dart';
 import '../features/catalog/search_screen.dart';
 import '../features/checkout/checkout_screen.dart';
 import '../features/checkout/order_confirmation_screen.dart';
-import '../features/checkout/upi_payment_screen.dart';
+import '../features/checkout/razorpay_checkout_screen.dart';
 import '../features/custom_order/custom_order_screen.dart';
 import '../features/home/home_shell.dart';
 import '../features/invoices/invoices_screen.dart';
@@ -113,14 +113,14 @@ abstract final class AppNavigator {
   static Future<void> toCheckout(BuildContext context) =>
       _push<void>(context, const CheckoutScreen());
 
-  /// UPI payment; resolves true when the buyer confirmed payment.
-  static Future<bool> toUpiPayment(BuildContext context,
-      {required double amount, required String reference}) async {
-    final bool? paid = await _push<bool>(
-      context,
-      UpiPaymentScreen(amount: amount, reference: reference),
+  /// Razorpay checkout for an order the API created in paymentPending.
+  static void toRazorpayCheckout(BuildContext context,
+      {required Order order, required CheckoutSession checkout}) {
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute<void>(
+        builder: (_) => RazorpayCheckoutScreen(order: order, checkout: checkout),
+      ),
     );
-    return paid ?? false;
   }
 
   static void toOrderConfirmation(BuildContext context, Order order) {

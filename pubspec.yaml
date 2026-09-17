@@ -16,9 +16,6 @@ dependencies:
   # Session, cart, wishlist, addresses and orders survive app restarts.
   shared_preferences: ^2.5.5
 
-  # UPI QR rendering on the payment screen (pure Dart, no native code).
-  qr_flutter: ^4.1.0
-
   # "Call us" / "WhatsApp" / "Chat" actions on the order-help sheet.
   url_launcher: ^6.3.2
 
@@ -28,6 +25,9 @@ dependencies:
   # Invoice PDF: `pdf` builds the document, `printing` shares / saves it.
   pdf: ^3.13.0
   printing: ^5.15.0
+  # SPOCART API client + Razorpay checkout (UPI, cards, net banking, wallets).
+  http: ^1.6.0
+  razorpay_flutter: ^1.4.6
 
 dev_dependencies:
   flutter_test:

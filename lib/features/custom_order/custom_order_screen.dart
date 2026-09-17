@@ -167,6 +167,7 @@ class _CustomOrderScreenState extends State<CustomOrderScreen> {
           ),
         ],
         notes: '${_notes.text.trim()}$sizes'.trim(),
+        designFilePath: _design?.path,
         designFileName: _design?.name,
       );
       if (!mounted) return;

@@ -84,10 +84,11 @@ class _OtpScreenState extends State<OtpScreen> {
     try {
       final AppServices services = AppScope.of(context);
       await services.session.verifyOtp(code);
-      // Welcome the buyer on their first sign-in on this device.
+      // Demo mode: welcome the buyer on their first sign-in on this device.
       await services.notifications.load();
-      if (services.notifications.items.isEmpty) {
-        await services.notifications.push(
+      if (services.notifications.localEvents &&
+          services.notifications.items.isEmpty) {
+        await services.notifications.pushLocal(
           type: NotificationType.offer,
           title: 'Welcome to SPOCART',
           body:

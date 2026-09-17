@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'app/app_navigator.dart';
 import 'app/app_scope.dart';
+import 'core/network/api_config.dart';
 import 'core/theme/app_theme.dart';
+import 'core/widgets/feedback.dart';
 import 'data/local/local_store.dart';
 import 'features/splash/splash_screen.dart';
 
@@ -22,7 +25,10 @@ Future<void> main() async {
   SystemChrome.setSystemUIOverlayStyle(AppTheme.lightOverlay);
 
   final LocalStore store = await SharedPrefsStore.open();
-  runApp(SpocartApp(services: AppServices.demo(store)));
+  final AppServices services = ApiConfig.useDemoBackend
+      ? AppServices.demo(store)
+      : AppServices.http(store);
+  runApp(SpocartApp(services: services));
 }
 
 class SpocartApp extends StatefulWidget {
@@ -35,10 +41,27 @@ class SpocartApp extends StatefulWidget {
 }
 
 class _SpocartAppState extends State<SpocartApp> {
+  final GlobalKey<NavigatorState> _navigator = GlobalKey<NavigatorState>();
+
+  @override
+  void initState() {
+    super.initState();
+    widget.services.sessionExpired.addListener(_onSessionExpired);
+  }
+
   @override
   void dispose() {
+    widget.services.sessionExpired.removeListener(_onSessionExpired);
     widget.services.dispose();
     super.dispose();
+  }
+
+  /// The server rejected the token: return to Login with an explanation.
+  void _onSessionExpired() {
+    final BuildContext? context = _navigator.currentContext;
+    if (context == null) return;
+    AppNavigator.toLogin(context);
+    showAppSnackBar(context, 'Your session has expired. Please sign in again.');
   }
 
   @override
@@ -46,6 +69,7 @@ class _SpocartAppState extends State<SpocartApp> {
     return AppScope(
       services: widget.services,
       child: MaterialApp(
+        navigatorKey: _navigator,
         title: 'SPOCART',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light,
