@@ -1,0 +1,62 @@
+name: sport
+description: "SPOCART — B2B sports equipment ordering for retailers, academies, schools and institutions."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # Session, cart, wishlist, addresses and orders survive app restarts.
+  shared_preferences: ^2.5.5
+
+  # UPI QR rendering on the payment screen (pure Dart, no native code).
+  qr_flutter: ^4.1.0
+
+  # "Call us" / "WhatsApp" / "Chat" actions on the order-help sheet.
+  url_launcher: ^6.3.2
+
+  # CSV bulk-order upload (Android + iOS document picker).
+  file_picker: ^12.3.0
+
+  # Invoice PDF: `pdf` builds the document, `printing` shares / saves it.
+  pdf: ^3.13.0
+  printing: ^5.15.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+  # Generates Android (incl. adaptive) + iOS launcher icons from assets/icon.
+  flutter_launcher_icons: ^0.14.4
+
+# Launcher icons — SPOCART mark. Regenerate with: dart run flutter_launcher_icons
+flutter_launcher_icons:
+  image_path: "assets/icon/app_icon.png"
+  android: "ic_launcher"
+  ios: true
+  remove_alpha_ios: true
+  min_sdk_android: 21
+  adaptive_icon_background: "#0B0B0C"
+  adaptive_icon_foreground: "assets/icon/app_icon.png"
+  web:
+    generate: false
+  windows:
+    generate: false
+  macos:
+    generate: false
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/brand/
+    - assets/images/
