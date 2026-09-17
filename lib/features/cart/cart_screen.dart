@@ -67,9 +67,11 @@ class CartScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final CartController cart = AppScope.of(context).cart;
+    final AppServices services = AppScope.of(context);
+    final CartController cart = services.cart;
     return ListenableBuilder(
-      listenable: cart,
+      // Also rebuild when the catalogue arrives: lines are priced through it.
+      listenable: Listenable.merge([cart, services.catalog]),
       builder: (context, _) {
         final bool empty = cart.isEmpty;
         return Scaffold(
