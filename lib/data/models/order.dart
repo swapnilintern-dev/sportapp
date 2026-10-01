@@ -27,10 +27,10 @@ class CartLine {
   /// Cart lines are keyed by product + size so two sizes stay separate.
   String get key => size == null ? productId : '$productId#$size';
 
-  CartLine copyWith({int? quantity}) => CartLine(
+  CartLine copyWith({int? quantity, String? size}) => CartLine(
         productId: productId,
         quantity: quantity ?? this.quantity,
-        size: size,
+        size: size ?? this.size,
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{

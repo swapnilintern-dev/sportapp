@@ -114,19 +114,33 @@ class _ProductListScreenState extends State<ProductListScreen> {
                           itemBuilder: (_, _) => const ProductRowSkeleton(),
                         )
                       : products.isEmpty
-                          ? EmptyStateView(
-                              icon: Icons.inventory_2_outlined,
-                              title: 'No products here yet',
-                              message: _subcategory == null
-                                  ? 'We are adding ${widget.category.name} products soon. Ask us for a quote in the meantime.'
-                                  : 'Nothing under "$_subcategory" right now. Try another filter.',
-                              actionLabel: _subcategory == null
-                                  ? 'Request a Quote'
-                                  : 'Show All',
-                              onAction: _subcategory == null
-                                  ? () => AppNavigator.toCustomOrder(context)
-                                  : () => setState(() => _subcategory = null),
-                            )
+                          // Nothing selected means no filter is involved, so
+                          // never blame one; a chip is named explicitly.
+                          ? _subcategory == null
+                              ? EmptyStateView(
+                                  icon: Icons.inventory_2_outlined,
+                                  title:
+                                      '${widget.category.name} is not stocked yet',
+                                  message:
+                                      'We are adding ${widget.category.name} products soon. Tell us what you need and we will quote it for you.',
+                                  actionLabel: 'Request a Quote',
+                                  onAction: () =>
+                                      AppNavigator.toCustomOrder(context),
+                                )
+                              : EmptyStateView(
+                                  icon: Icons.inventory_2_outlined,
+                                  title:
+                                      '$_subcategory is currently unavailable',
+                                  message:
+                                      '$_subcategory has no stock in ${widget.category.name} right now. See everything else in ${widget.category.name}, or ask us to quote it.',
+                                  actionLabel:
+                                      'Show all ${widget.category.name}',
+                                  onAction: () =>
+                                      setState(() => _subcategory = null),
+                                  secondaryActionLabel: 'Request a Quote',
+                                  onSecondaryAction: () =>
+                                      AppNavigator.toCustomOrder(context),
+                                )
                           : ListView.separated(
                               padding: const EdgeInsets.fromLTRB(
                                   AppSpacing.page,

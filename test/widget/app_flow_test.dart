@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sport/app/app_scope.dart';
+import 'package:sport/core/widgets/buttons.dart';
 import 'package:sport/data/local/local_store.dart';
 import 'package:sport/main.dart';
 
@@ -62,10 +63,20 @@ void main() {
     await signIn(tester);
     await tester.pumpAndSettle(const Duration(milliseconds: 600));
 
+    // The bat is sold in sizes, so the listing's Add to Cart must ask for one
+    // first — a size-less line is rejected by the server at checkout.
     await tester.tap(find.text('Add to Cart').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Select size'), findsOneWidget);
+    expect(services.cart.lineCount, 0, reason: 'nothing added until a size is picked');
+
+    await tester.tap(find.text('SH'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(PrimaryButton, 'Add to Cart'));
     await tester.pumpAndSettle();
     expect(services.cart.lineCount, 1);
     expect(services.cart.quantityOf('ck-kashmir-willow-bat'), 10);
+    expect(services.cart.lines.single.size, 'SH');
 
     await tester.tap(find.text('Cart'));
     await tester.pumpAndSettle();

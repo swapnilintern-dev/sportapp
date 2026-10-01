@@ -53,7 +53,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
       builder: (context, _) {
         return Scaffold(
           backgroundColor: AppColors.background,
-          appBar: const SpocartAppBar(title: 'Invoices'),
+          appBar: const SpocartAppBar(title: 'GST Invoices'),
           body: AsyncStateView<List<Order>>(
             loading: orders.loading,
             error: orders.error,

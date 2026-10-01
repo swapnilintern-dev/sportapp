@@ -46,6 +46,8 @@ class EmptyStateView extends StatelessWidget {
     this.message,
     this.actionLabel,
     this.onAction,
+    this.secondaryActionLabel,
+    this.onSecondaryAction,
     this.compact = false,
   });
 
@@ -54,6 +56,11 @@ class EmptyStateView extends StatelessWidget {
   final String? message;
   final String? actionLabel;
   final VoidCallback? onAction;
+
+  /// Optional quieter second way out (e.g. "Request a Quote" when a
+  /// sub-category is empty but the buyer still wants those goods).
+  final String? secondaryActionLabel;
+  final VoidCallback? onSecondaryAction;
   final bool compact;
 
   @override
@@ -94,6 +101,14 @@ class EmptyStateView extends StatelessWidget {
                   label: actionLabel!,
                   onPressed: onAction,
                   expand: false,
+                ),
+              ],
+              if (secondaryActionLabel != null &&
+                  onSecondaryAction != null) ...[
+                const SizedBox(height: AppSpacing.xs),
+                GhostButton(
+                  label: secondaryActionLabel!,
+                  onPressed: onSecondaryAction,
                 ),
               ],
             ],

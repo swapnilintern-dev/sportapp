@@ -84,8 +84,43 @@ class CartController extends ChangeNotifier {
     _persist();
   }
 
-  void remove(CartLine line) {
-    _lines.removeWhere((l) => l.key == line.key);
+  /// Removes [line] and returns the position it held, so the caller can offer
+  /// an Undo that puts it back exactly where it was. Returns -1 if not found.
+  int remove(CartLine line) {
+    final int at = _lines.indexWhere((l) => l.key == line.key);
+    if (at < 0) return -1;
+    _lines.removeAt(at);
+    _persist();
+    return at;
+  }
+
+  /// Undo for [remove]: puts [line] back at [at]. If a line with the same
+  /// product + size reappeared meanwhile, the quantities are merged instead.
+  void restore(CartLine line, int at) {
+    final CartLine? existing = lineFor(line.productId, size: line.size);
+    if (existing != null) {
+      _replace(existing,
+          existing.copyWith(quantity: existing.quantity + line.quantity));
+    } else {
+      _lines.insert(at.clamp(0, _lines.length), line);
+    }
+    _persist();
+  }
+
+  /// Sets the size on an existing line (the cart's "Select size" fix). Merges
+  /// into the line that already holds that size, if there is one.
+  void setSize(CartLine line, String size) {
+    if (line.size == size) return;
+    final int at = _lines.indexWhere((l) => l.key == line.key);
+    if (at < 0) return;
+    final CartLine? sameSize = lineFor(line.productId, size: size);
+    if (sameSize != null) {
+      _lines.removeAt(at);
+      _replace(sameSize,
+          sameSize.copyWith(quantity: sameSize.quantity + line.quantity));
+    } else {
+      _lines[at] = line.copyWith(size: size);
+    }
     _persist();
   }
 
@@ -126,6 +161,18 @@ class CartController extends ChangeNotifier {
   /// Lines whose product no longer exists in the catalogue.
   List<CartLine> get orphaned =>
       _lines.where((l) => productOf(l) == null).toList(growable: false);
+
+  /// True when [product] is sold in sizes, so a cart line must carry one.
+  bool requiresSize(Product product) => product.sizes.isNotEmpty;
+
+  /// Lines on a sized product that carry no size. The server rejects these at
+  /// checkout, so the cart blocks them first and offers a size picker.
+  List<CartLine> get missingSize => _lines.where((l) {
+        final Product? p = productOf(l);
+        return p != null &&
+            requiresSize(p) &&
+            (l.size == null || l.size!.isEmpty);
+      }).toList(growable: false);
 
   /// Frozen copies of every line for an order snapshot.
   List<OrderLine> toOrderLines() {

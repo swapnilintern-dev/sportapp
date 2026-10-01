@@ -10,6 +10,7 @@ import '../../core/widgets/feedback.dart';
 import '../../core/widgets/layout.dart';
 import '../../core/widgets/state_views.dart';
 import '../../data/models/account.dart';
+import '../../data/models/catalog.dart';
 import '../../data/models/order.dart';
 import '../../data/repositories/repositories.dart';
 import '../../state/address_controller.dart';
@@ -92,6 +93,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return;
     }
 
+    // Sized products must carry a size; the server rejects such a line, so say
+    // so here and send the buyer to the cart where it can be fixed.
+    final List<CartLine> sizeless = cart.missingSize;
+    if (sizeless.isNotEmpty) {
+      final Product? p = cart.productOf(sizeless.first);
+      showAppSnackBar(
+        context,
+        '${p?.name ?? 'One item'} needs a size before you can check out.',
+        tone: SnackTone.error,
+        actionLabel: 'Open Cart',
+        onAction: () => AppNavigator.backToHome(context, tab: HomeTab.cart),
+      );
+      return;
+    }
+
     if (!services.session.isRegistered) {
       final bool saved =
           await AppNavigator.toBusinessRegistration(context, allowSkip: false);
@@ -139,6 +155,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _placeOrder(Address address) async {
+    // Order creation is not idempotent: never let a second tap through, and
+    // never retry it automatically.
+    if (_placing) return;
     final AppServices services = AppScope.of(context);
     setState(() => _placing = true);
     try {
@@ -158,6 +177,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     } on AppException catch (e) {
       if (mounted) showAppSnackBar(context, e.message, tone: SnackTone.error);
     } catch (_) {
+      // Only reached when the failure carried no message we can show — an
+      // AppException (including every server validation error) is surfaced
+      // verbatim above.
       if (mounted) {
         showAppSnackBar(
           context,

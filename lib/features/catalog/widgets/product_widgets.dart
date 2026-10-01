@@ -12,6 +12,7 @@ import '../../../core/widgets/media.dart';
 import '../../../core/widgets/state_views.dart';
 import '../../../data/models/catalog.dart';
 import '../../../state/cart_controller.dart';
+import 'size_picker.dart';
 
 //==============================================================================
 // SPOCART — Shared catalogue widgets
@@ -24,20 +25,36 @@ import '../../../state/cart_controller.dart';
 
 /// Adds [product] to the cart (at its MOQ on first add) with a snackbar that
 /// links to the cart. Used by every "+ Add to Cart" in the app.
-void addProductToCart(BuildContext context, Product product, {String? size}) {
+///
+/// A product sold in sizes must carry one — the server rejects a size-less line
+/// at checkout — so when [size] is not given the size sheet opens first.
+/// Dismissing that sheet adds nothing.
+Future<void> addProductToCart(
+  BuildContext context,
+  Product product, {
+  String? size,
+}) async {
   if (!product.inStock) {
     showAppSnackBar(context, '${product.name} is currently out of stock.',
         tone: SnackTone.error);
     return;
   }
+
+  String? chosen = size;
+  if (product.sizes.isNotEmpty && chosen == null) {
+    chosen = await showSizePickerSheet(context, product);
+    if (chosen == null || !context.mounted) return;
+  }
+
   final CartController cart = AppScope.of(context).cart;
-  final bool fresh = cart.lineFor(product.id, size: size) == null;
-  final int qty = cart.add(product, size: size);
+  final bool fresh = cart.lineFor(product.id, size: chosen) == null;
+  final int qty = cart.add(product, size: chosen);
+  final String sizeNote = chosen == null ? '' : ' (size $chosen)';
   showCartSnack(
     context,
     fresh
-        ? 'Added ${product.moq} × ${product.name} (MOQ) to cart'
-        : '${product.name} — $qty in cart',
+        ? 'Added ${product.moq} × ${product.name}$sizeNote to cart'
+        : '${product.name}$sizeNote — $qty in cart',
   );
 }
 

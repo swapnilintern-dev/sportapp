@@ -14,21 +14,52 @@ import '../../data/models/catalog.dart';
 import '../../data/models/order.dart';
 import '../../state/cart_controller.dart';
 import '../catalog/widgets/product_widgets.dart';
+import '../catalog/widgets/size_picker.dart';
 import '../support/help_sheet.dart';
 
 //==============================================================================
 // SPOCART — Cart
 //------------------------------------------------------------------------------
 // Line items with steppers, GST summary and Proceed to Checkout. "Need Help?"
-// (app bar) and the floating chat button open the support sheet. Checkout
-// requires business details — the registration screen is offered first for
-// unregistered buyers and can be skipped.
+// in the app bar is the single support entry point here. A line on a sized
+// product that carries no size is flagged and blocks checkout, because the
+// server rejects it. Removing a line offers Undo. Checkout requires business
+// details — the registration screen is offered first for unregistered buyers
+// and can be skipped.
 //==============================================================================
 
 class CartScreen extends StatelessWidget {
   const CartScreen({super.key, this.isTab = false});
 
   final bool isTab;
+
+  /// Asks for the size of a line that has none and writes it onto that line.
+  static Future<void> _pickSizeFor(
+      BuildContext context, CartController cart, CartLine line) async {
+    final Product? product = cart.productOf(line);
+    if (product == null) return;
+    final String? picked = await showSizePickerSheet(
+      context,
+      product,
+      confirmLabel: 'Save size',
+    );
+    if (picked != null) cart.setSize(line, picked);
+  }
+
+  /// Removes [line] with a 5-second Undo that puts it back where it was.
+  static void _removeWithUndo(
+      BuildContext context, CartController cart, CartLine line) {
+    final Product? product = cart.productOf(line);
+    final int at = cart.remove(line);
+    if (at < 0) return;
+    showAppSnackBar(
+      context,
+      'Removed ${product?.name ?? 'item'} from cart',
+      duration: const Duration(seconds: 5),
+      actionLabel: 'Undo',
+      onAction: () => cart.restore(line, at),
+    );
+  }
 
   Future<void> _clearAll(BuildContext context, CartController cart) async {
     final bool ok = await showAppConfirmDialog(
@@ -45,6 +76,19 @@ class CartScreen extends StatelessWidget {
   Future<void> _checkout(BuildContext context) async {
     final AppServices services = AppScope.of(context);
     final CartController cart = services.cart;
+
+    final List<CartLine> sizeless = cart.missingSize;
+    if (sizeless.isNotEmpty) {
+      final Product? p = cart.productOf(sizeless.first);
+      showAppSnackBar(
+        context,
+        '${p?.name ?? 'One item'} needs a size before you can check out.',
+        tone: SnackTone.error,
+        actionLabel: 'Select size',
+        onAction: () => _pickSizeFor(context, cart, sizeless.first),
+      );
+      return;
+    }
 
     final List<CartLine> short = cart.belowMoq;
     if (short.isNotEmpty) {
@@ -119,15 +163,6 @@ class CartScreen extends StatelessWidget {
                     },
                   ),
                 ),
-          floatingActionButton: empty
-              ? null
-              : FloatingActionButton(
-                  onPressed: () => showHelpSheet(context),
-                  backgroundColor: AppColors.red,
-                  foregroundColor: AppColors.white,
-                  tooltip: 'Need help?',
-                  child: const Icon(Icons.chat_bubble_outline_rounded),
-                ),
           bottomNavigationBar: empty
               ? null
               : BottomActionBar(
@@ -189,9 +224,14 @@ class _CartLineTile extends StatelessWidget {
 
     final double unitPrice = cart.unitPrice(line);
     final bool belowMoq = line.quantity < product.moq;
+    final bool needsSize = cart.requiresSize(product) &&
+        (line.size == null || line.size!.isEmpty);
 
     return AppCard(
       padding: const EdgeInsets.all(10),
+      // Tapping the line reopens the product, so a wrong pick is easy to review
+      // and replace without losing the rest of the cart.
+      onTap: () => AppNavigator.toProduct(context, product),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -225,7 +265,8 @@ class _CartLineTile extends StatelessWidget {
                       size: 32,
                       iconSize: 19,
                       color: AppColors.textMuted,
-                      onPressed: () => cart.remove(line),
+                      onPressed: () =>
+                          CartScreen._removeWithUndo(context, cart, line),
                     ),
                   ],
                 ),
@@ -248,6 +289,29 @@ class _CartLineTile extends StatelessWidget {
                         style: AppTypography.bodyStrong),
                   ],
                 ),
+                if (needsSize)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.straighten_rounded,
+                            size: 15, color: AppColors.red),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            'Size not selected',
+                            style: AppTypography.caption
+                                .copyWith(color: AppColors.red),
+                          ),
+                        ),
+                        GhostButton(
+                          label: 'Select size',
+                          onPressed: () =>
+                              CartScreen._pickSizeFor(context, cart, line),
+                        ),
+                      ],
+                    ),
+                  ),
                 if (belowMoq)
                   Padding(
                     padding: const EdgeInsets.only(top: 6),
@@ -269,6 +333,16 @@ class _Summary extends StatelessWidget {
   const _Summary({required this.cart});
 
   final CartController cart;
+
+  /// Back to where the buyer came from when the cart was pushed over a listing;
+  /// otherwise to the Categories tab.
+  void _continueShopping(BuildContext context) {
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    } else {
+      AppNavigator.backToHome(context, tab: HomeTab.categories);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -293,6 +367,12 @@ class _Summary extends StatelessWidget {
           Text(
             '${cart.totalUnits} units across ${cart.lineCount} product${cart.lineCount == 1 ? '' : 's'} · GST invoice included',
             style: AppTypography.caption,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          SecondaryButton(
+            label: 'Continue Shopping',
+            icon: Icons.storefront_outlined,
+            onPressed: () => _continueShopping(context),
           ),
         ],
       ),

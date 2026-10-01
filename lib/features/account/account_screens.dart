@@ -588,7 +588,7 @@ class HelpSupportScreen extends StatelessWidget {
     ),
     (
       'Do I get a GST invoice?',
-      'Yes. A GST invoice is generated for every order and can be downloaded from Orders → Invoices.'
+      'Yes. A GST invoice is generated for every order. Download it from the order itself, or see them all under Account → GST Invoices.'
     ),
     (
       'How do I pay?',

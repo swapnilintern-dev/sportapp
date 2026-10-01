@@ -96,7 +96,7 @@ class AccountTab extends StatelessWidget {
                     ),
                     AccountMenuItem(
                       icon: Icons.description_outlined,
-                      label: 'Invoices',
+                      label: 'GST Invoices',
                       onTap: () => AppNavigator.toInvoices(context),
                     ),
                     AccountMenuItem(

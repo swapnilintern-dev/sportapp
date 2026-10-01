@@ -12,7 +12,9 @@ import '../../core/widgets/media.dart';
 import '../../data/models/catalog.dart';
 import '../../state/cart_controller.dart';
 import '../support/help_sheet.dart';
+import 'image_viewer_screen.dart';
 import 'widgets/product_widgets.dart';
+import 'widgets/size_picker.dart';
 
 //==============================================================================
 // SPOCART — Product details
@@ -39,29 +41,40 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
   bool get _needsSize => product.sizes.isNotEmpty && _size == null;
 
-  void _addToCart() {
-    if (_needsSize) {
-      showAppSnackBar(context, 'Please select a size first.',
-          tone: SnackTone.error);
-      return;
-    }
-    addProductToCart(context, product, size: _size);
+  /// Resolves the size to use: the one already picked on this page, or one
+  /// asked for in the sheet. Null means the buyer backed out of the sheet.
+  Future<String?> _resolveSize({required String confirmLabel}) async {
+    if (!_needsSize) return _size;
+    final String? picked = await showSizePickerSheet(
+      context,
+      product,
+      selected: _size,
+      confirmLabel: confirmLabel,
+    );
+    if (picked == null || !mounted) return null;
+    setState(() => _size = picked);
+    return picked;
   }
 
-  void _buyNow() {
-    if (_needsSize) {
-      showAppSnackBar(context, 'Please select a size first.',
-          tone: SnackTone.error);
-      return;
-    }
+  Future<void> _addToCart() async {
+    final String? size = await _resolveSize(confirmLabel: 'Add to Cart');
+    if (size == null && product.sizes.isNotEmpty) return;
+    if (!mounted) return;
+    await addProductToCart(context, product, size: size);
+  }
+
+  Future<void> _buyNow() async {
     if (!product.inStock) {
       showAppSnackBar(context, '${product.name} is currently out of stock.',
           tone: SnackTone.error);
       return;
     }
+    final String? size = await _resolveSize(confirmLabel: 'Buy Now');
+    if (size == null && product.sizes.isNotEmpty) return;
+    if (!mounted) return;
     final CartController cart = AppScope.of(context).cart;
-    if (cart.lineFor(product.id, size: _size) == null) {
-      cart.add(product, size: _size);
+    if (cart.lineFor(product.id, size: size) == null) {
+      cart.add(product, size: size);
     }
     AppNavigator.toCheckout(context);
   }
@@ -149,7 +162,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                       runSpacing: AppSpacing.xs,
                       children: [
                         for (final String s in product.sizes)
-                          _SizeChip(
+                          SizeChip(
                             label: s,
                             selected: _size == s,
                             onTap: () =>
@@ -281,11 +294,20 @@ class _Gallery extends StatelessWidget {
               child: PageView.builder(
                 itemCount: images.length,
                 onPageChanged: onIndexChanged,
-                itemBuilder: (context, i) => ProductImage(
-                  source: images[i],
-                  radius: 0,
-                  fallbackIcon: fallback,
-                  background: AppColors.surface,
+                itemBuilder: (context, i) => GestureDetector(
+                  onTap: () => showProductImageViewer(
+                    context,
+                    images: product.images,
+                    initialIndex: i,
+                    title: product.name,
+                    fallbackIcon: fallback,
+                  ),
+                  child: ProductImage(
+                    source: images[i],
+                    radius: 0,
+                    fallbackIcon: fallback,
+                    background: AppColors.surface,
+                  ),
                 ),
               ),
             ),
@@ -458,43 +480,6 @@ class _FeatureRow extends StatelessWidget {
   }
 }
 
-class _SizeChip extends StatelessWidget {
-  const _SizeChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: selected ? AppColors.black : AppColors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: AppRadius.smAll,
-        side: BorderSide(color: selected ? AppColors.black : AppColors.border),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          constraints: const BoxConstraints(minWidth: 48),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          alignment: Alignment.center,
-          child: Text(
-            label,
-            style: AppTypography.smallStrong.copyWith(
-              color: selected ? AppColors.white : AppColors.text,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 class _InfoLine extends StatelessWidget {
   const _InfoLine({required this.icon, required this.text, this.onTap});

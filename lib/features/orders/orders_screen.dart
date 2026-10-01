@@ -5,7 +5,6 @@ import '../../app/app_scope.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/utils/formatters.dart';
-import '../../core/widgets/buttons.dart';
 import '../../core/widgets/layout.dart';
 import '../../core/widgets/media.dart';
 import '../../core/widgets/state_views.dart';
@@ -69,13 +68,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
           appBar: SpocartAppBar(
             title: 'My Orders',
             showBack: !widget.isTab,
-            actions: [
-              AppIconButton(
-                icon: Icons.receipt_outlined,
-                tooltip: 'Invoices',
-                onPressed: () => AppNavigator.toInvoices(context),
-              ),
-            ],
           ),
           body: ContentWidth(
             child: Column(
