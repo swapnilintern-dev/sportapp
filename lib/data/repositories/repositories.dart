@@ -77,7 +77,9 @@ class OtpChallenge {
   final String mobile;
   final DateTime expiresAt;
 
-  /// Only set by the demo backend, which has no SMS gateway. Null with the API.
+  /// The code itself, shown on screen when no SMS can be delivered: the demo
+  /// backend always sets it, and a development API server sets it while it is
+  /// on the console driver. A production server never sends it.
   final String? demoCode;
 }
 

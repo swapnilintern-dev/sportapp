@@ -235,7 +235,7 @@ class _ChangeMobileScreenState extends State<ChangeMobileScreen> {
       ),
       if (demoCode != null) ...[
         const SizedBox(height: AppSpacing.sm),
-        Text('Demo build: the OTP is $demoCode',
+        Text('SMS is not connected on this build — the OTP is $demoCode',
             style: AppTypography.caption, textAlign: TextAlign.center),
       ],
       const SizedBox(height: AppSpacing.lg),

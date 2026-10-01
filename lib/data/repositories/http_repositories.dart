@@ -47,12 +47,19 @@ class HttpAuthRepository implements AuthRepository {
 
   @override
   Future<OtpChallenge> sendOtp(String mobile) async {
-    final Map<String, dynamic> d =
-        _map(await _api.post('/auth/otp/send', {'mobile': mobile}));
+    return _challenge(
+        await _api.post('/auth/otp/send', {'mobile': mobile}), mobile);
+  }
+
+  /// A development server on the console SMS driver hands the code back so the
+  /// app can show it; production never sends `devCode`, so this stays null.
+  OtpChallenge _challenge(dynamic data, String fallbackMobile) {
+    final Map<String, dynamic> d = _map(data);
     return OtpChallenge(
-      mobile: d['mobile'] as String? ?? mobile,
+      mobile: d['mobile'] as String? ?? fallbackMobile,
       expiresAt: DateTime.tryParse(d['expiresAt'] as String? ?? '') ??
           DateTime.now().add(const Duration(minutes: 5)),
+      demoCode: d['devCode'] as String?,
     );
   }
 
@@ -105,13 +112,9 @@ class HttpAuthRepository implements AuthRepository {
 
   @override
   Future<OtpChallenge> requestMobileChange(String newMobile) async {
-    final Map<String, dynamic> d = _map(
-        await _api.post('/auth/mobile/change/send', {'mobile': newMobile}));
-    return OtpChallenge(
-      mobile: d['mobile'] as String? ?? newMobile,
-      expiresAt: DateTime.tryParse(d['expiresAt'] as String? ?? '') ??
-          DateTime.now().add(const Duration(minutes: 5)),
-    );
+    return _challenge(
+        await _api.post('/auth/mobile/change/send', {'mobile': newMobile}),
+        newMobile);
   }
 
   @override

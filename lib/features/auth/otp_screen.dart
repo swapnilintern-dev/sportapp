@@ -287,7 +287,7 @@ class _DemoCodeNotice extends StatelessWidget {
           Expanded(
             child: Text.rich(
               TextSpan(
-                text: 'Demo backend — SMS is not connected yet. Your OTP is ',
+                text: 'SMS is not connected on this build. Your OTP is ',
                 style: AppTypography.caption,
                 children: [
                   TextSpan(
