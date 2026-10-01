@@ -93,6 +93,11 @@ class AddressController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// City and state behind a PIN code. Read-through: nothing on this controller
+  /// changes, so the form owns the result and the buyer can still edit it.
+  Future<PincodeLocation> lookupPincode(String pincode) =>
+      _repository.lookupPincode(pincode);
+
   void reset() {
     _addresses = <Address>[];
     _loaded = false;

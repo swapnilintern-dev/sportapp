@@ -104,6 +104,31 @@ class HttpAuthRepository implements AuthRepository {
   }
 
   @override
+  Future<OtpChallenge> requestMobileChange(String newMobile) async {
+    final Map<String, dynamic> d = _map(
+        await _api.post('/auth/mobile/change/send', {'mobile': newMobile}));
+    return OtpChallenge(
+      mobile: d['mobile'] as String? ?? newMobile,
+      expiresAt: DateTime.tryParse(d['expiresAt'] as String? ?? '') ??
+          DateTime.now().add(const Duration(minutes: 5)),
+    );
+  }
+
+  @override
+  Future<UserSession> confirmMobileChange(String newMobile, String code) async {
+    // The server signs every other device out, so it hands back a fresh token
+    // for this one; storing it keeps this session alive.
+    final Map<String, dynamic> d = _map(await _api
+        .post('/auth/mobile/change/verify', {'mobile': newMobile, 'code': code}));
+    final String token = d['token'] as String;
+    final UserSession session = UserSession.fromJson(_map(d['user']));
+    _api.token = token;
+    await _store.writeStrings(_tokenKey, <String>[token]);
+    await _store.writeJson(StoreKeys.session, session.toJson());
+    return session;
+  }
+
+  @override
   Future<void> signOut() async {
     _api.token = null;
     await _store.remove(_tokenKey);
@@ -186,6 +211,10 @@ class HttpAddressRepository implements AddressRepository {
 
   @override
   Future<void> setDefault(String id) => _api.post('/addresses/$id/default');
+
+  @override
+  Future<PincodeLocation> lookupPincode(String pincode) async =>
+      PincodeLocation.fromJson(_map(await _api.get('/addresses/pincode/$pincode')));
 }
 
 class HttpTeamRepository implements TeamRepository {

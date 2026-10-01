@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -16,6 +18,11 @@ import '../../data/repositories/repositories.dart';
 // SPOCART — Add / edit address
 //------------------------------------------------------------------------------
 // Pops with the saved Address, or null when cancelled.
+//
+// A complete PIN code fills the city and state from the server's India Post
+// lookup. It only ever overwrites values the lookup itself put there, so
+// anything the buyer typed stays; a failed or unknown PIN is reported and the
+// fields stay editable, so the lookup can never block saving an address.
 //==============================================================================
 
 class AddressFormScreen extends StatefulWidget {
@@ -41,6 +48,21 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
   bool _default = false;
   bool _saving = false;
 
+  // ── PIN lookup ─────────────────────────────────────────────────────────────
+  Timer? _pinDebounce;
+
+  /// Incremented per lookup; a reply for an older PIN is dropped.
+  int _pinRequest = 0;
+  bool _pinBusy = false;
+  String? _pinNote;
+  bool _pinFailed = false;
+
+  /// What the lookup last wrote, so the buyer's own edits are never overwritten.
+  String? _filledCity;
+  String? _filledState;
+
+  static const Duration _pinDebounceDelay = Duration(milliseconds: 450);
+
   bool get _isEdit => widget.existing != null;
 
   @override
@@ -59,10 +81,74 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
     _state = a?.state;
     _label = a?.label ?? AddressLabel.home;
     _default = a?.isDefault ?? false;
+    _pincode.addListener(_onPincodeChanged);
+  }
+
+  void _onPincodeChanged() {
+    _pinDebounce?.cancel();
+    final String pin = _pincode.text.trim();
+    if (Validators.pincode(pin) != null) {
+      // Half-typed or invalid: drop any in-flight reply and clear the note.
+      _pinRequest++;
+      if (_pinNote != null || _pinBusy) {
+        setState(() {
+          _pinNote = null;
+          _pinBusy = false;
+          _pinFailed = false;
+        });
+      }
+      return;
+    }
+    _pinDebounce = Timer(_pinDebounceDelay, () => _lookupPincode(pin));
+  }
+
+  Future<void> _lookupPincode(String pin) async {
+    final int request = ++_pinRequest;
+    setState(() {
+      _pinBusy = true;
+      _pinFailed = false;
+      _pinNote = null;
+    });
+    try {
+      final PincodeLocation place =
+          await AppScope.of(context).addresses.lookupPincode(pin);
+      // A newer PIN was typed while this was in flight: ignore this answer.
+      if (!mounted || request != _pinRequest) return;
+      setState(() {
+        _pinBusy = false;
+        if (_city.text.trim().isEmpty || _city.text == _filledCity) {
+          _city.text = place.city;
+          _filledCity = place.city;
+        }
+        if (_state == null || _state == _filledState) {
+          if (kIndianStates.contains(place.state)) {
+            _state = place.state;
+            _filledState = place.state;
+          }
+        }
+        _pinNote = '${place.city}, ${place.state}';
+      });
+    } on AppException catch (e) {
+      if (!mounted || request != _pinRequest) return;
+      setState(() {
+        _pinBusy = false;
+        _pinFailed = true;
+        _pinNote = e.message;
+      });
+    } catch (_) {
+      if (!mounted || request != _pinRequest) return;
+      setState(() {
+        _pinBusy = false;
+        _pinFailed = true;
+        _pinNote = 'Could not look up that PIN code. Please fill city and state.';
+      });
+    }
   }
 
   @override
   void dispose() {
+    _pinDebounce?.cancel();
+    _pincode.removeListener(_onPincodeChanged);
     _contact.dispose();
     _business.dispose();
     _line1.dispose();
@@ -214,6 +300,14 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
                     ),
                   ],
                 ),
+                if (_pinBusy || _pinNote != null) ...[
+                  const SizedBox(height: AppSpacing.xs),
+                  _PinStatus(
+                    busy: _pinBusy,
+                    failed: _pinFailed,
+                    message: _pinNote,
+                  ),
+                ],
                 const SizedBox(height: AppSpacing.md),
                 AppDropdownField<String>(
                   label: 'State',
@@ -270,6 +364,53 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
           onPressed: _save,
         ),
       ),
+    );
+  }
+}
+
+/// One line under the PIN field: looking up, what was found, or why not.
+class _PinStatus extends StatelessWidget {
+  const _PinStatus({required this.busy, required this.failed, this.message});
+
+  final bool busy;
+  final bool failed;
+  final String? message;
+
+  @override
+  Widget build(BuildContext context) {
+    if (busy) {
+      return Row(
+        children: [
+          const SizedBox(
+            width: 12,
+            height: 12,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: AppSpacing.xs),
+          Text('Looking up PIN code…',
+              style: AppTypography.caption.copyWith(color: AppColors.textSoft)),
+        ],
+      );
+    }
+    if (message == null) return const SizedBox.shrink();
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          failed ? Icons.info_outline_rounded : Icons.check_circle_outline_rounded,
+          size: 14,
+          color: failed ? AppColors.textSoft : AppColors.success,
+        ),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(
+            message!,
+            style: AppTypography.caption.copyWith(
+              color: failed ? AppColors.textSoft : AppColors.success,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

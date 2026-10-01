@@ -5,6 +5,7 @@ import '../data/models/catalog.dart';
 import '../data/models/order.dart';
 import '../features/account/account_screens.dart';
 import '../features/account/business_registration_screen.dart';
+import '../features/account/change_mobile_screen.dart';
 import '../features/account/dashboard_screen.dart';
 import '../features/account/settings_screen.dart';
 import '../features/address/address_form_screen.dart';
@@ -155,6 +156,10 @@ abstract final class AppNavigator {
 
   static Future<void> toBusinessDetails(BuildContext context) =>
       _push<void>(context, const BusinessDetailsScreen());
+
+  /// Returns true when the number was actually changed.
+  static Future<bool?> toChangeMobile(BuildContext context) =>
+      _push<bool>(context, const ChangeMobileScreen());
 
   static Future<void> toGstDetails(BuildContext context) =>
       _push<void>(context, const GstDetailsScreen());

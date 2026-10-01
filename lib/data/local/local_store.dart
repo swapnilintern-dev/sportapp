@@ -137,4 +137,17 @@ abstract final class StoreKeys {
   static const String notifications = 'notifications';
   static const String settings = 'settings';
   static const String team = 'team';
+
+  /// Keys the demo backend stores per account (see AccountKey.scoped). The
+  /// session itself is global and is rewritten, so it is not in this list.
+  static const List<String> scoped = <String>[
+    cart,
+    wishlist,
+    addresses,
+    orders,
+    quotes,
+    notifications,
+    settings,
+    team,
+  ];
 }

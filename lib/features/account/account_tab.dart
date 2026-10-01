@@ -83,6 +83,11 @@ class AccountTab extends StatelessWidget {
                       label: 'Team Members',
                       onTap: () => AppNavigator.toTeamMembers(context),
                     ),
+                    AccountMenuItem(
+                      icon: Icons.phone_iphone_rounded,
+                      label: 'Change Mobile Number',
+                      onTap: () => AppNavigator.toChangeMobile(context),
+                    ),
                   ],
                 ),
                 const SizedBox(height: AppSpacing.lg),

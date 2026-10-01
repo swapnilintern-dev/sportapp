@@ -113,9 +113,13 @@ class UserSession {
 
   bool get isRegistered => profile != null;
 
-  UserSession copyWith({BusinessProfile? profile, double? creditLimit}) =>
+  UserSession copyWith({
+    String? mobile,
+    BusinessProfile? profile,
+    double? creditLimit,
+  }) =>
       UserSession(
-        mobile: mobile,
+        mobile: mobile ?? this.mobile,
         signedInAt: signedInAt,
         profile: profile ?? this.profile,
         creditLimit: creditLimit ?? this.creditLimit,

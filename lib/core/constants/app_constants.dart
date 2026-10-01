@@ -30,6 +30,8 @@ abstract final class PaymentDetails {
 abstract final class BusinessRules {
   static const double gstRate = 0.18;
   static const int otpLength = 6;
-  static const Duration otpResendCooldown = Duration(seconds: 45);
+  /// Matches the server's own resend cooldown; a shorter button would just
+  /// earn a "please wait" error.
+  static const Duration otpResendCooldown = Duration(seconds: 60);
   static const double defaultCreditLimit = 100000;
 }

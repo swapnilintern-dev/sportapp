@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:sport/core/network/api_client.dart';
 import 'package:sport/data/local/local_store.dart';
+import 'package:sport/data/models/account.dart';
 import 'package:sport/data/models/order.dart';
 import 'package:sport/data/repositories/http_repositories.dart';
 import 'package:sport/data/repositories/repositories.dart';
@@ -60,6 +61,123 @@ void main() {
     fake = FakeApi();
     api = ApiClient(client: fake.client, baseUrl: 'http://api.test/api/v1');
     store = MemoryStore();
+  });
+
+  group('Mobile number change', () {
+    Future<HttpAuthRepository> signedIn() async {
+      fake.routes['POST /api/v1/auth/otp/send'] =
+          (_) => {'mobile': '9876543210', 'expiresAt': '2026-09-17T10:05:00Z'};
+      fake.routes['POST /api/v1/auth/otp/verify'] = (_) => {
+            'token': 'jwt-old',
+            'user': {
+              'mobile': '9876543210',
+              'signedInAt': '2026-09-17T10:00:00Z',
+              'profile': null,
+              'creditLimit': 100000,
+            },
+          };
+      final HttpAuthRepository auth = HttpAuthRepository(api, store);
+      await auth.sendOtp('9876543210');
+      await auth.verifyOtp('9876543210', '123456');
+      return auth;
+    }
+
+    test('request posts the new number and returns the expiry', () async {
+      final HttpAuthRepository auth = await signedIn();
+      fake.routes['POST /api/v1/auth/mobile/change/send'] =
+          (_) => {'mobile': '9123456780', 'expiresAt': '2026-09-17T10:06:00Z'};
+
+      final OtpChallenge challenge = await auth.requestMobileChange('9123456780');
+      expect(challenge.mobile, '9123456780');
+      expect(challenge.expiresAt.isAfter(DateTime.utc(2026, 9, 17, 10, 5)), isTrue);
+      // Never leaks a code to the client.
+      expect(challenge.demoCode, isNull);
+
+      final http.Request sent = fake.requests.last;
+      expect(jsonDecode(sent.body), {'mobile': '9123456780'});
+      expect(sent.headers['authorization'], 'Bearer jwt-old');
+    });
+
+    test('verify swaps in the new token and session', () async {
+      final HttpAuthRepository auth = await signedIn();
+      fake.routes['POST /api/v1/auth/mobile/change/verify'] = (_) => {
+            'token': 'jwt-new',
+            'user': {
+              'mobile': '9123456780',
+              'signedInAt': '2026-09-17T10:07:00Z',
+              'profile': null,
+              'creditLimit': 100000,
+            },
+          };
+
+      final UserSession session =
+          await auth.confirmMobileChange('9123456780', '654321');
+      expect(session.mobile, '9123456780');
+
+      // The old token is gone: later calls carry the new one, and a restart
+      // restores the new session.
+      fake.routes['GET /api/v1/auth/me'] = (_) => {
+            'mobile': '9123456780',
+            'signedInAt': '2026-09-17T10:07:00Z',
+            'profile': null,
+            'creditLimit': 100000,
+          };
+      await auth.refreshSession();
+      expect(fake.requests.last.headers['authorization'], 'Bearer jwt-new');
+      expect((await auth.restoreSession())!.mobile, '9123456780');
+    });
+
+    test('a rejected code leaves the session on the old number', () async {
+      final HttpAuthRepository auth = await signedIn();
+      fake.routes['POST /api/v1/auth/mobile/change/verify'] = (_) => http.Response(
+          jsonEncode({'ok': false, 'message': 'Incorrect OTP. Please check and try again.'}), 400);
+
+      await expectLater(
+        auth.confirmMobileChange('9123456780', '000000'),
+        throwsA(isA<AppException>().having(
+            (AppException e) => e.message, 'message', contains('Incorrect OTP'))),
+      );
+      expect((await auth.restoreSession())!.mobile, '9876543210');
+    });
+  });
+
+  group('PIN code lookup', () {
+    test('returns the city and state for a PIN', () async {
+      fake.routes['GET /api/v1/addresses/pincode/411001'] = (_) => {
+            'pincode': '411001',
+            'city': 'Pune City',
+            'district': 'Pune',
+            'state': 'Maharashtra',
+          };
+      final PincodeLocation place =
+          await HttpAddressRepository(api).lookupPincode('411001');
+      expect(place.city, 'Pune City');
+      expect(place.state, 'Maharashtra');
+      expect(place.district, 'Pune');
+    });
+
+    test('an unknown PIN surfaces the server message', () async {
+      fake.routes['GET /api/v1/addresses/pincode/999999'] = (_) => http.Response(
+          jsonEncode({'ok': false, 'message': 'We could not find that PIN code. Please check it.'}), 404);
+      await expectLater(
+        HttpAddressRepository(api).lookupPincode('999999'),
+        throwsA(isA<AppException>().having(
+            (AppException e) => e.message, 'message', contains('could not find'))),
+      );
+    });
+
+    test('an unavailable lookup surfaces the fall-back advice', () async {
+      fake.routes['GET /api/v1/addresses/pincode/500001'] = (_) => http.Response(
+          jsonEncode({
+            'ok': false,
+            'message': 'PIN code lookup is unavailable right now. Please type your city and state.',
+          }), 503);
+      await expectLater(
+        HttpAddressRepository(api).lookupPincode('500001'),
+        throwsA(isA<AppException>().having((AppException e) => e.message, 'message',
+            contains('type your city and state'))),
+      );
+    });
   });
 
   test('OTP verify stores the token and sends it on later calls', () async {

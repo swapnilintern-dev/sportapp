@@ -93,6 +93,15 @@ abstract class AuthRepository {
   Future<UserSession?> refreshSession();
 
   Future<UserSession> saveProfile(BusinessProfile profile);
+
+  /// Sends a code to [newMobile] so the account can be moved to it. The number
+  /// is not changed yet — [confirmMobileChange] does that.
+  Future<OtpChallenge> requestMobileChange(String newMobile);
+
+  /// Verifies the code sent to [newMobile] and returns the updated session.
+  /// Other devices are signed out by the server.
+  Future<UserSession> confirmMobileChange(String newMobile, String code);
+
   Future<void> signOut();
 }
 
@@ -163,6 +172,69 @@ class DemoAuthRepository implements AuthRepository {
     final UserSession updated = current.copyWith(profile: profile);
     await _save(updated);
     return updated;
+  }
+
+  @override
+  Future<OtpChallenge> requestMobileChange(String newMobile) async {
+    final UserSession? current = await restoreSession();
+    if (current == null) throw const AppException('You are not signed in.');
+    if (current.mobile == newMobile) {
+      throw const AppException('That is already your registered number.');
+    }
+    await _latency(600);
+    final String code = (100000 + _random.nextInt(900000)).toString();
+    _pendingCodes['change:$newMobile'] = code;
+    return OtpChallenge(
+      mobile: newMobile,
+      expiresAt: DateTime.now().add(const Duration(minutes: 5)),
+      demoCode: code,
+    );
+  }
+
+  @override
+  Future<UserSession> confirmMobileChange(String newMobile, String code) async {
+    await _latency(700);
+    final String? expected = _pendingCodes['change:$newMobile'];
+    if (expected == null) {
+      throw const AppException('This OTP has expired. Please request a new one.');
+    }
+    if (expected != code) {
+      throw const AppException('Incorrect OTP. Please check and try again.');
+    }
+    _pendingCodes.remove('change:$newMobile');
+
+    final UserSession? current = await restoreSession();
+    if (current == null) throw const AppException('You are not signed in.');
+    // Demo data is stored per mobile number; the API keys everything by user
+    // id, so only the demo backend has to carry it across.
+    await _moveScopedData(current.mobile, newMobile);
+    final UserSession updated = current.copyWith(
+      mobile: newMobile,
+      profile: current.profile?.copyWith(mobile: newMobile),
+    );
+    await _save(updated);
+    return updated;
+  }
+
+  Future<void> _moveScopedData(String from, String to) async {
+    if (from == to) return;
+    for (final String key in StoreKeys.scoped) {
+      final String oldKey = '$from:$key';
+      final List<Map<String, dynamic>>? list = await _store.readList(oldKey);
+      if (list != null) {
+        await _store.writeJson('$to:$key', list);
+      } else {
+        final Map<String, dynamic>? map = await _store.readMap(oldKey);
+        if (map != null) {
+          await _store.writeJson('$to:$key', map);
+        } else {
+          final List<String>? strings = await _store.readStrings(oldKey);
+          if (strings == null) continue;
+          await _store.writeJson('$to:$key', strings);
+        }
+      }
+      await _store.remove(oldKey);
+    }
   }
 
   Future<void> _save(UserSession session) {
@@ -338,6 +410,28 @@ class DemoOrderRepository implements OrderRepository {
 //------------------------------------------------------------------------------
 // Addresses
 //------------------------------------------------------------------------------
+/// City and state behind an Indian PIN code, as the server resolved it.
+class PincodeLocation {
+  const PincodeLocation({
+    required this.pincode,
+    required this.city,
+    required this.district,
+    required this.state,
+  });
+
+  final String pincode;
+  final String city;
+  final String district;
+  final String state;
+
+  factory PincodeLocation.fromJson(Map<String, dynamic> json) => PincodeLocation(
+        pincode: json['pincode'] as String,
+        city: json['city'] as String? ?? '',
+        district: json['district'] as String? ?? '',
+        state: json['state'] as String? ?? '',
+      );
+}
+
 abstract class AddressRepository {
   Future<List<Address>> fetchAddresses();
 
@@ -345,6 +439,11 @@ abstract class AddressRepository {
   Future<Address> save(Address address);
   Future<void> remove(String id);
   Future<void> setDefault(String id);
+
+  /// Resolves [pincode] to a city and state. Throws an [AppException] when the
+  /// PIN is unknown or the lookup is unavailable — the form then lets the buyer
+  /// type both fields, so this never blocks saving an address.
+  Future<PincodeLocation> lookupPincode(String pincode);
 }
 
 class DemoAddressRepository implements AddressRepository {
@@ -404,7 +503,34 @@ class DemoAddressRepository implements AddressRepository {
     final List<Address> list = await _load();
     await _write(list.map((a) => a.copyWith(isDefault: a.id == id)).toList());
   }
+
+  /// The demo backend has no PIN service; it answers for a few PINs so the
+  /// autofill can be exercised offline and reports the rest as unavailable.
+  @override
+  Future<PincodeLocation> lookupPincode(String pincode) async {
+    await _latency(350);
+    final PincodeLocation? known = kDemoPincodes[pincode];
+    if (known == null) {
+      throw const AppException(
+          'PIN code lookup is unavailable right now. Please type your city and state.');
+    }
+    return known;
+  }
 }
+
+/// A handful of real PINs for the offline demo backend.
+const Map<String, PincodeLocation> kDemoPincodes = <String, PincodeLocation>{
+  '411001': PincodeLocation(
+      pincode: '411001', city: 'Pune City', district: 'Pune', state: 'Maharashtra'),
+  '110001': PincodeLocation(
+      pincode: '110001', city: 'New Delhi', district: 'Central Delhi', state: 'Delhi'),
+  '560001': PincodeLocation(
+      pincode: '560001', city: 'Bangalore North', district: 'Bangalore', state: 'Karnataka'),
+  '700001': PincodeLocation(
+      pincode: '700001', city: 'Kolkata', district: 'Kolkata', state: 'West Bengal'),
+  '400001': PincodeLocation(
+      pincode: '400001', city: 'Mumbai', district: 'Mumbai', state: 'Maharashtra'),
+};
 
 //------------------------------------------------------------------------------
 // Team members

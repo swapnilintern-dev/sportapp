@@ -58,6 +58,7 @@ class SessionController extends ChangeNotifier {
     if (_session == null) return;
     _session = null;
     _challenge = null;
+    _mobileChange = null;
     notifyListeners();
   }
 
@@ -99,12 +100,58 @@ class SessionController extends ChangeNotifier {
     }
   }
 
+  //----------------------------------------------------------------------------
+  // Changing the registered mobile number
+  //----------------------------------------------------------------------------
+  // Kept apart from [challenge], which belongs to sign-in: a code sent to a new
+  // number must never be able to complete a login, or the other way round.
+
+  OtpChallenge? _mobileChange;
+  OtpChallenge? get mobileChangeChallenge => _mobileChange;
+
+  Future<OtpChallenge> requestMobileChange(String newMobile) async {
+    if (_session == null) throw const AppException('You are not signed in.');
+    _setBusy(true);
+    try {
+      _mobileChange = await _auth.requestMobileChange(newMobile);
+      notifyListeners();
+      return _mobileChange!;
+    } finally {
+      _setBusy(false);
+    }
+  }
+
+  /// Verifies the code sent to the new number. The session (and, with the API,
+  /// the token) is replaced only on success.
+  Future<UserSession> confirmMobileChange(String code) async {
+    final OtpChallenge? challenge = _mobileChange;
+    if (challenge == null) {
+      throw const AppException('Please request an OTP first.');
+    }
+    _setBusy(true);
+    try {
+      _session = await _auth.confirmMobileChange(challenge.mobile, code);
+      _mobileChange = null;
+      notifyListeners();
+      return _session!;
+    } finally {
+      _setBusy(false);
+    }
+  }
+
+  void cancelMobileChange() {
+    if (_mobileChange == null) return;
+    _mobileChange = null;
+    notifyListeners();
+  }
+
   Future<void> signOut() async {
     try {
       await _auth.signOut();
     } finally {
       _session = null;
       _challenge = null;
+      _mobileChange = null;
       notifyListeners();
     }
   }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../app/app_navigator.dart';
 import '../../app/app_scope.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../core/theme/app_typography.dart';
@@ -72,6 +73,16 @@ class _BusinessRegistrationScreenState
     super.dispose();
   }
 
+  /// The number is verified by OTP on its own screen; when that succeeds the
+  /// session carries the new number, so the field just re-reads it.
+  Future<void> _changeMobile(BuildContext context) async {
+    final bool changed = await AppNavigator.toChangeMobile(context) ?? false;
+    if (!changed || !mounted) return;
+    setState(() {
+      _mobile.text = AppScope.of(context).session.session?.mobile ?? _mobile.text;
+    });
+  }
+
   Future<void> _save() async {
     if (_saving) return;
     FocusManager.instance.primaryFocus?.unfocus();
@@ -84,6 +95,8 @@ class _BusinessRegistrationScreenState
               gstin: _gstin.text.trim().toUpperCase(),
               businessType: _type!,
               contactName: _contactName.text.trim(),
+              // The server stores the account's verified number regardless;
+              // this keeps the demo backend in step.
               mobile: _mobile.text.trim(),
               email: _email.text.trim(),
             ),
@@ -178,15 +191,13 @@ class _BusinessRegistrationScreenState
                 AppTextField(
                   controller: _mobile,
                   label: 'Mobile Number',
-                  required: true,
                   prefixText: '+91  ',
-                  keyboardType: TextInputType.phone,
-                  textInputAction: TextInputAction.next,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(10),
-                  ],
-                  validator: Validators.mobile,
+                  readOnly: true,
+                  helper: 'Your verified sign-in number.',
+                  suffix: GhostButton(
+                    label: 'Change',
+                    onPressed: () => _changeMobile(context),
+                  ),
                 ),
                 const SizedBox(height: AppSpacing.md),
                 AppTextField(
