@@ -35,6 +35,15 @@ class HttpCatalogRepository implements CatalogRepository {
   @override
   Future<List<Product>> fetchProducts() async =>
       _list(await _api.get('/catalog/products')).map(Product.fromJson).toList();
+
+  @override
+  Future<List<String>> fetchBestSellerIds({int limit = 10}) async {
+    final Map<String, dynamic> d = _map(
+        await _api.get('/catalog/best-sellers', query: {'limit': '$limit'}));
+    return (d['productIds'] as List<dynamic>? ?? const <dynamic>[])
+        .map((dynamic e) => e.toString())
+        .toList(growable: false);
+  }
 }
 
 class HttpAuthRepository implements AuthRepository {

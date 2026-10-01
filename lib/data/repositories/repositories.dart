@@ -46,6 +46,11 @@ class AccountKey {
 abstract class CatalogRepository {
   Future<List<ProductCategory>> fetchCategories();
   Future<List<Product>> fetchProducts();
+
+  /// Product ids in best-seller order: what actually sold in the last 30 days,
+  /// with any products an admin pinned in front. May be empty when nothing has
+  /// sold yet — callers fall back to the catalogue's own "popular" flag.
+  Future<List<String>> fetchBestSellerIds({int limit});
 }
 
 class DemoCatalogRepository implements CatalogRepository {
@@ -61,6 +66,18 @@ class DemoCatalogRepository implements CatalogRepository {
   Future<List<Product>> fetchProducts() async {
     await _latency(450);
     return kDemoProducts;
+  }
+
+  /// The demo backend has no order history to rank, so it stands in with the
+  /// catalogue's own "popular" flag.
+  @override
+  Future<List<String>> fetchBestSellerIds({int limit = 10}) async {
+    await _latency(200);
+    return kDemoProducts
+        .where((Product p) => p.popular)
+        .take(limit)
+        .map((Product p) => p.id)
+        .toList(growable: false);
   }
 }
 

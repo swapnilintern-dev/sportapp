@@ -141,6 +141,22 @@ void main() {
     });
   });
 
+  group('Best sellers', () {
+    test('parses the ranking and passes the limit', () async {
+      fake.routes['GET /api/v1/catalog/best-sellers'] =
+          (_) => {'productIds': ['ck-ss-ball', 'fb-match-ball-5']};
+      final List<String> ids =
+          await HttpCatalogRepository(api).fetchBestSellerIds(limit: 5);
+      expect(ids, ['ck-ss-ball', 'fb-match-ball-5']);
+      expect(fake.requests.last.url.queryParameters['limit'], '5');
+    });
+
+    test('an empty ranking is an empty list, not an error', () async {
+      fake.routes['GET /api/v1/catalog/best-sellers'] = (_) => {'productIds': []};
+      expect(await HttpCatalogRepository(api).fetchBestSellerIds(), isEmpty);
+    });
+  });
+
   group('PIN code lookup', () {
     test('returns the city and state for a PIN', () async {
       fake.routes['GET /api/v1/addresses/pincode/411001'] = (_) => {

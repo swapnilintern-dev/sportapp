@@ -19,6 +19,7 @@ class CatalogController extends ChangeNotifier {
   List<ProductCategory> _categories = const <ProductCategory>[];
   List<Product> _products = const <Product>[];
   Map<String, Product> _byId = const <String, Product>{};
+  List<String> _bestSellerIds = const <String>[];
   bool _loading = false;
   bool _loaded = false;
   String? _error;
@@ -42,6 +43,13 @@ class CatalogController extends ChangeNotifier {
       _products = products;
       _byId = <String, Product>{for (final Product p in products) p.id: p};
       _loaded = true;
+      // Ranking is a nice-to-have on top of the catalogue: if it fails the
+      // catalogue still loads and Home falls back to the popular flag.
+      try {
+        _bestSellerIds = await _repository.fetchBestSellerIds(limit: 10);
+      } catch (_) {
+        _bestSellerIds = const <String>[];
+      }
     } on AppException catch (e) {
       _error = e.message;
     } catch (_) {
@@ -63,6 +71,27 @@ class CatalogController extends ChangeNotifier {
 
   List<Product> get popular =>
       _products.where((p) => p.popular).toList(growable: false);
+
+  /// Products in best-seller order. Falls back to the catalogue's own popular
+  /// flag while nothing has sold yet, so Home is never empty on a new store.
+  List<Product> get bestSellers {
+    final List<Product> ranked = <Product>[];
+    for (final String id in _bestSellerIds) {
+      final Product? p = _byId[id];
+      if (p != null) ranked.add(p);
+    }
+    return ranked.isEmpty ? popular : ranked;
+  }
+
+  /// How many of the top sellers carry the Trending badge in listings.
+  static const int trendingCount = 5;
+
+  Set<String> get _trendingIds =>
+      _bestSellerIds.take(trendingCount).toSet();
+
+  /// True for the handful of genuine top sellers, so the badge stays a signal.
+  /// Never true while the ranking is empty — a badge on everything says nothing.
+  bool isTrending(String productId) => _trendingIds.contains(productId);
 
   List<Product> inCategory(String categoryId, {String? subcategory}) =>
       _products

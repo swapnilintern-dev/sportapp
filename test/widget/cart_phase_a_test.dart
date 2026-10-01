@@ -39,7 +39,7 @@ void main() {
     final String code = services.session.challenge!.demoCode!;
     await tester.enterText(find.byType(TextField).first, code);
     await tester.pumpAndSettle(const Duration(milliseconds: 900));
-    expect(find.text('Popular Products'), findsOneWidget);
+    expect(find.text('Best Sellers'), findsOneWidget);
   }
 
   Future<void> openCartTab(WidgetTester tester) async {

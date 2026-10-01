@@ -105,6 +105,12 @@ class ProductCard extends StatelessWidget {
                       background: AppColors.surfaceAlt,
                       dense: true,
                     ),
+                  )
+                else if (AppScope.of(context).catalog.isTrending(product.id))
+                  const Positioned(
+                    top: 8,
+                    left: 8,
+                    child: TrendingPill(dense: true),
                   ),
               ],
             ),
@@ -204,6 +210,11 @@ class ProductRow extends StatelessWidget {
                 Row(
                   children: [
                     Flexible(child: StockPill(inStock: product.inStock)),
+                    if (product.inStock &&
+                        AppScope.of(context).catalog.isTrending(product.id)) ...[
+                      const SizedBox(width: AppSpacing.xs),
+                      const Flexible(child: TrendingPill()),
+                    ],
                     const SizedBox(width: AppSpacing.xs),
                     if (showAddToCart)
                       Expanded(
@@ -229,6 +240,22 @@ class ProductRow extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Marks one of the handful of genuine top sellers. Shown only while the
+/// server has real ranking data, so it stays a signal rather than decoration.
+class TrendingPill extends StatelessWidget {
+  const TrendingPill({super.key, this.dense = false});
+
+  final bool dense;
+
+  @override
+  Widget build(BuildContext context) => StatusPill(
+        label: 'Trending',
+        icon: Icons.trending_up_rounded,
+        color: AppColors.red,
+        dense: dense,
+      );
 }
 
 class StockPill extends StatelessWidget {

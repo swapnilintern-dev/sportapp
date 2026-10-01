@@ -36,7 +36,7 @@ void main() {
     await tester.enterText(
         find.byType(TextField).first, services.session.challenge!.demoCode!);
     await tester.pumpAndSettle(const Duration(milliseconds: 900));
-    expect(find.text('Popular Products'), findsOneWidget);
+    expect(find.text('Best Sellers'), findsOneWidget);
   }
 
   Future<void> openAccountItem(WidgetTester tester, String label) async {

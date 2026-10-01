@@ -89,7 +89,7 @@ class HomeTabView extends StatelessWidget {
                   _CategoryRail(catalog: catalog),
                   const SizedBox(height: AppSpacing.lg),
                   SectionHeader(
-                    title: 'Popular Products',
+                    title: 'Best Sellers',
                     actionLabel: 'View All',
                     onAction: () => AppNavigator.backToHome(
                       context,
@@ -97,7 +97,7 @@ class HomeTabView extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: AppSpacing.sm),
-                  _PopularRail(catalog: catalog),
+                  _BestSellerRail(catalog: catalog),
                   const SizedBox(height: AppSpacing.xl),
                   const SectionHeader(
                     title: 'Buying in Bulk?',
@@ -229,8 +229,8 @@ class _CategoryRail extends StatelessWidget {
   }
 }
 
-class _PopularRail extends StatelessWidget {
-  const _PopularRail({required this.catalog});
+class _BestSellerRail extends StatelessWidget {
+  const _BestSellerRail({required this.catalog});
 
   final CatalogController catalog;
 
@@ -256,13 +256,17 @@ class _PopularRail extends StatelessWidget {
       );
     }
 
-    final List<Product> popular = catalog.popular;
-    if (popular.isEmpty) {
+    // Ranked by what actually sold in the last 30 days, with anything an admin
+    // pinned in front; falls back to the catalogue's popular flag on a store
+    // that has not sold anything yet.
+    final List<Product> best = catalog.bestSellers;
+    if (best.isEmpty) {
       return const Padding(
         padding: AppSpacing.pagePadding,
         child: EmptyStateView(
           icon: Icons.storefront_outlined,
-          title: 'No popular products yet',
+          title: 'No best sellers yet',
+          message: 'Products will appear here as orders come in.',
           compact: true,
         ),
       );
@@ -273,10 +277,10 @@ class _PopularRail extends StatelessWidget {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: AppSpacing.pagePadding,
-        itemCount: popular.length,
+        itemCount: best.length,
         separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
         itemBuilder: (context, i) =>
-            ProductCard(product: popular[i], width: cardWidth),
+            ProductCard(product: best[i], width: cardWidth),
       ),
     );
   }
