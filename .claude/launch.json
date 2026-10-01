@@ -4,8 +4,47 @@
     {
       "name": "spocart-web",
       "runtimeExecutable": "flutter",
-      "runtimeArgs": ["run", "-d", "web-server", "--web-port", "8099", "--web-hostname", "127.0.0.1"],
+      "runtimeArgs": [
+        "run",
+        "-d",
+        "web-server",
+        "--web-port",
+        "8099",
+        "--web-hostname",
+        "127.0.0.1"
+      ],
       "port": 8099
+    },
+    {
+      "name": "website",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8765",
+        "-d",
+        "/Users/spocart/Desktop/untitled folder/swapnil2/website_spocart/frontend"
+      ],
+      "port": 8765
+    },
+    {
+      "name": "spocart-api",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "start",
+        "--prefix",
+        "/Users/spocart/Desktop/untitled folder/swapnil2/website_spocart/backend/spocart-api"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "spocart-api-neon",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "cd '/Users/spocart/Desktop/untitled folder/swapnil2/website_spocart/backend/spocart-api' && export DATABASE_URL=\"$(grep '^DATABASE_URL=' .env.production | cut -d= -f2- | tr -d '\\\"')\" && echo '[backend] local code \u2192 NEON database' && npm start"
+      ],
+      "port": 3000
     }
   ]
 }
