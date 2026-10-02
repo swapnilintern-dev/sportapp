@@ -8,6 +8,7 @@ import '../cart/cart_screen.dart';
 import '../catalog/categories_screen.dart';
 import '../orders/orders_screen.dart';
 import 'home_tab.dart';
+import 'offer_popup.dart';
 
 //==============================================================================
 // SPOCART — Home shell (bottom navigation)
@@ -35,6 +36,11 @@ class _HomeShellState extends State<HomeShell> {
     final AppServices services = AppScope.of(context);
     services.catalog.load();
     services.notifications.load();
+    // The offer waits a few seconds so it never lands on a buyer mid-tap, and
+    // the controller hands it over at most once per launch.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) maybeShowOfferPopup(context);
+    });
   }
 
   @override

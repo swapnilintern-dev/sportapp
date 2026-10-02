@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sport/data/models/catalog.dart';
+import 'package:sport/data/models/engagement.dart';
 import 'package:sport/data/repositories/repositories.dart';
 import 'package:sport/data/sources/demo_catalog.dart';
 import 'package:sport/state/catalog_controller.dart';
@@ -32,6 +33,18 @@ class _FakeCatalogRepository implements CatalogRepository {
     if (failRanking) throw const AppException('ranking is down');
     return ranking.take(limit).toList();
   }
+
+  // The other shelves are not what these tests are about; they stay empty so a
+  // failure here could only come from the ranking.
+  @override
+  Future<List<Deal>> fetchDeals({int limit = 20}) async => const <Deal>[];
+
+  @override
+  Future<List<Product>> fetchNewLaunches({int limit = 10}) async =>
+      const <Product>[];
+
+  @override
+  Future<Promotion?> fetchActivePromotion() async => null;
 }
 
 Future<CatalogController> _loaded(_FakeCatalogRepository repo) async {

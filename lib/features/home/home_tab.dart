@@ -9,7 +9,9 @@ import '../../core/widgets/inputs.dart';
 import '../../core/widgets/layout.dart';
 import '../../core/widgets/media.dart';
 import '../../core/widgets/state_views.dart';
+import '../../core/utils/formatters.dart';
 import '../../data/models/catalog.dart';
+import '../../data/models/engagement.dart';
 import '../../state/catalog_controller.dart';
 import '../catalog/widgets/product_widgets.dart';
 
@@ -98,6 +100,26 @@ class HomeTabView extends StatelessWidget {
                   ),
                   const SizedBox(height: AppSpacing.sm),
                   _BestSellerRail(catalog: catalog),
+                  // Both shelves hide themselves when there is nothing honest
+                  // to put on them, rather than showing an empty promise.
+                  if (catalog.deals.isNotEmpty) ...[
+                    const SizedBox(height: AppSpacing.xl),
+                    const SectionHeader(
+                      title: 'Deals',
+                      subtitle: 'Prices we have just dropped, and stock running out',
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    _DealRail(deals: catalog.deals),
+                  ],
+                  if (catalog.newLaunches.isNotEmpty) ...[
+                    const SizedBox(height: AppSpacing.xl),
+                    const SectionHeader(
+                      title: 'New Launches',
+                      subtitle: 'Just added to the catalogue',
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    _NewLaunchRail(products: catalog.newLaunches),
+                  ],
                   const SizedBox(height: AppSpacing.xl),
                   const SectionHeader(
                     title: 'Buying in Bulk?',
@@ -281,6 +303,138 @@ class _BestSellerRail extends StatelessWidget {
         separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
         itemBuilder: (context, i) =>
             ProductCard(product: best[i], width: cardWidth),
+      ),
+    );
+  }
+}
+
+/// Horizontal shelf of genuine deals. Each card says exactly why it is here:
+/// a price we recorded dropping, or stock the seller actually counts.
+class _DealRail extends StatelessWidget {
+  const _DealRail({required this.deals});
+
+  final List<Deal> deals;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 272,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: AppSpacing.pagePadding,
+        itemCount: deals.length,
+        separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
+        itemBuilder: (context, i) => _DealCard(deal: deals[i]),
+      ),
+    );
+  }
+}
+
+class _DealCard extends StatelessWidget {
+  const _DealCard({required this.deal});
+
+  final Deal deal;
+
+  @override
+  Widget build(BuildContext context) {
+    final Product product = deal.product;
+    return SizedBox(
+      width: 160,
+      child: AppCard(
+        padding: EdgeInsets.zero,
+        onTap: () => AppNavigator.toProduct(context, product),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Stack(
+              children: [
+                ProductImage(
+                  source: product.primaryImage,
+                  width: 160,
+                  height: 118,
+                  radius: 0,
+                  fallbackIcon: productFallbackIcon(context, product),
+                ),
+                if (deal.hasDrop)
+                  Positioned(
+                    top: 8,
+                    left: 8,
+                    child: StatusPill(
+                      label: '${deal.savingPercent}% off',
+                      color: AppColors.red,
+                      dense: true,
+                    ),
+                  ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    product.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.smallStrong,
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Text(
+                        formatInr(deal.currentPrice),
+                        style: AppTypography.price.copyWith(fontSize: 14),
+                      ),
+                      if (deal.hasDrop) ...[
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            formatInr(deal.previousPrice!),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTypography.caption.copyWith(
+                              decoration: TextDecoration.lineThrough,
+                              color: AppColors.textMuted,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  if (deal.isLowStock) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      'Only ${deal.stockLeft} left',
+                      style: AppTypography.caption.copyWith(color: AppColors.red),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Recently added products, so a new range is visible before it has any sales.
+class _NewLaunchRail extends StatelessWidget {
+  const _NewLaunchRail({required this.products});
+
+  final List<Product> products;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 236,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: AppSpacing.pagePadding,
+        itemCount: products.length,
+        separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
+        itemBuilder: (context, i) =>
+            ProductCard(product: products[i], width: 150),
       ),
     );
   }

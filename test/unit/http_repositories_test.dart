@@ -6,6 +6,8 @@ import 'package:http/testing.dart';
 import 'package:sport/core/network/api_client.dart';
 import 'package:sport/data/local/local_store.dart';
 import 'package:sport/data/models/account.dart';
+import 'package:sport/data/models/catalog.dart';
+import 'package:sport/data/models/engagement.dart';
 import 'package:sport/data/models/order.dart';
 import 'package:sport/data/repositories/http_repositories.dart';
 import 'package:sport/data/repositories/repositories.dart';
@@ -154,6 +156,62 @@ void main() {
     test('an empty ranking is an empty list, not an error', () async {
       fake.routes['GET /api/v1/catalog/best-sellers'] = (_) => {'productIds': []};
       expect(await HttpCatalogRepository(api).fetchBestSellerIds(), isEmpty);
+    });
+  });
+
+  group('Deals, launches and offers', () {
+    test('a deal carries the product plus what the server recorded', () async {
+      fake.routes['GET /api/v1/catalog/deals'] = (_) => [
+            {
+              'id': 'ck-ss-ball', 'name': 'SS Cricket Ball', 'brand': 'SS',
+              'categoryId': 'cricket', 'subcategory': 'Balls', 'unit': 'pc',
+              'moq': 24, 'description': '', 'images': [],
+              'tiers': [{'minQty': 24, 'unitPrice': 320}],
+              'currentPrice': 320, 'previousPrice': 400, 'stockLeft': null,
+            }
+          ];
+      final List<Deal> deals = await HttpCatalogRepository(api).fetchDeals(limit: 5);
+      expect(deals.single.product.name, 'SS Cricket Ball');
+      expect(deals.single.savingPercent, 20);
+      expect(deals.single.isLowStock, isFalse);
+      expect(fake.requests.last.url.queryParameters['limit'], '5');
+    });
+
+    test('new launches parse as ordinary products', () async {
+      fake.routes['GET /api/v1/catalog/new-launches'] = (_) => [
+            {
+              'id': 'gy-mat', 'name': 'Exercise Mat', 'brand': 'X',
+              'categoryId': 'gym', 'subcategory': 'Mats', 'unit': 'pc',
+              'moq': 10, 'description': '', 'images': [],
+              'tiers': [{'minQty': 10, 'unitPrice': 500}],
+              'videoUrl': 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+              'videoThumbnailUrl': 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg',
+            }
+          ];
+      final List<Product> products =
+          await HttpCatalogRepository(api).fetchNewLaunches(limit: 3);
+      expect(products.single.id, 'gy-mat');
+      expect(products.single.hasVideo, isTrue);
+    });
+
+    test('no live offer comes back as null, not an error', () async {
+      fake.routes['GET /api/v1/promotions/active'] = (_) => {'promotion': null};
+      expect(await HttpCatalogRepository(api).fetchActivePromotion(), isNull);
+    });
+
+    test('a live offer parses with its link', () async {
+      fake.routes['GET /api/v1/promotions/active'] = (_) => {
+            'promotion': {
+              'id': 'promo-1', 'title': 'Diwali Sale', 'body': '10% off',
+              'imageUrl': null, 'linkType': 'category', 'linkTarget': 'cricket',
+              'endsAt': '2026-12-31T00:00:00Z',
+            }
+          };
+      final Promotion? p = await HttpCatalogRepository(api).fetchActivePromotion();
+      expect(p!.title, 'Diwali Sale');
+      expect(p.link, PromotionLink.category);
+      expect(p.hasAction, isTrue);
+      expect(p.actionLabel, 'Shop Now');
     });
   });
 

@@ -9,6 +9,7 @@ import '../state/cart_controller.dart';
 import '../state/catalog_controller.dart';
 import '../state/notifications_controller.dart';
 import '../state/orders_controller.dart';
+import '../state/promotion_controller.dart';
 import '../state/quotes_controller.dart';
 import '../state/session_controller.dart';
 import '../state/settings_controller.dart';
@@ -39,6 +40,7 @@ class AppServices {
     required this.quotes,
     required this.settings,
     required this.team,
+    required this.promotions,
     this.api,
   });
 
@@ -46,7 +48,8 @@ class AppServices {
   /// Real backend: PostgreSQL + Razorpay through the SPOCART API.
   factory AppServices.http(LocalStore store, {ApiClient? client}) {
     final ApiClient api = client ?? ApiClient();
-    final CatalogController catalog = CatalogController(HttpCatalogRepository(api));
+    final HttpCatalogRepository catalogRepository = HttpCatalogRepository(api);
+    final CatalogController catalog = CatalogController(catalogRepository);
     final CartStorage cartStorage = CartStorage(store);
     final NotificationsController notifications =
         NotificationsController(HttpNotificationRepository(api));
@@ -64,6 +67,7 @@ class AppServices {
       quotes: QuotesController(HttpQuoteRepository(api), notifications),
       settings: SettingsController(store),
       team: TeamController(HttpTeamRepository(api)),
+      promotions: PromotionController(catalogRepository, store),
     );
     // A 401 means the token is dead server-side: drop the session and let the
     // app fall back to Login.
@@ -78,8 +82,8 @@ class AppServices {
   /// On-device demo backend (no server, no Razorpay).
   factory AppServices.demo(LocalStore store) {
     final AccountKey account = AccountKey();
-    final CatalogController catalog =
-        CatalogController(const DemoCatalogRepository());
+    const DemoCatalogRepository catalogRepository = DemoCatalogRepository();
+    final CatalogController catalog = CatalogController(catalogRepository);
     final CartStorage cartStorage = CartStorage(store);
     final NotificationsController notifications = NotificationsController(
       DemoNotificationRepository(store, account),
@@ -98,6 +102,7 @@ class AppServices {
       quotes: QuotesController(DemoQuoteRepository(store, account), notifications),
       settings: SettingsController(store),
       team: TeamController(DemoTeamRepository(store, account)),
+      promotions: PromotionController(catalogRepository, store),
     );
   }
 
@@ -124,6 +129,7 @@ class AppServices {
   final QuotesController quotes;
   final SettingsController settings;
   final TeamController team;
+  final PromotionController promotions;
 
   /// Restores everything that must be known before the first screen draws.
   Future<void> bootstrap() async {
@@ -148,6 +154,9 @@ class AppServices {
     notifications.reset();
     quotes.reset();
     team.reset();
+    // A promotion can target registered or unregistered buyers, so the next
+    // sign-in must ask again rather than reuse the previous buyer's offer.
+    promotions.reset();
   }
 
   void dispose() {
@@ -159,6 +168,7 @@ class AppServices {
     wishlist.dispose();
     orders.dispose();
     addresses.dispose();
+    promotions.dispose();
     notifications.dispose();
     quotes.dispose();
     settings.dispose();

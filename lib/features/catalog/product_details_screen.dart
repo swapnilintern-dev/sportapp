@@ -13,6 +13,7 @@ import '../../data/models/catalog.dart';
 import '../../state/cart_controller.dart';
 import '../support/help_sheet.dart';
 import 'image_viewer_screen.dart';
+import 'widgets/product_video.dart';
 import 'widgets/product_widgets.dart';
 import 'widgets/size_picker.dart';
 
@@ -145,6 +146,21 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                       StockPill(inStock: product.inStock),
                     ],
                   ),
+                  if (product.inStock && (product.stockLeft ?? 0) > 0) ...[
+                    const SizedBox(height: AppSpacing.xs),
+                    Row(
+                      children: [
+                        const Icon(Icons.inventory_2_outlined,
+                            size: 15, color: AppColors.red),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Only ${product.stockLeft} left in stock',
+                          style: AppTypography.caption
+                              .copyWith(color: AppColors.red),
+                        ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: AppSpacing.md),
                   _BulkPricingRow(product: product),
                   if (product.features.isNotEmpty) ...[
@@ -153,6 +169,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                     const SizedBox(height: AppSpacing.sm),
                     _FeatureRow(features: product.features),
                   ],
+                  ProductVideoSection(product: product),
                   if (product.sizes.isNotEmpty) ...[
                     const SizedBox(height: AppSpacing.lg),
                     const Text('Available Sizes', style: AppTypography.h3),

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../data/models/catalog.dart';
+import '../data/models/engagement.dart';
 import '../data/repositories/repositories.dart';
 
 //==============================================================================
@@ -20,6 +21,8 @@ class CatalogController extends ChangeNotifier {
   List<Product> _products = const <Product>[];
   Map<String, Product> _byId = const <String, Product>{};
   List<String> _bestSellerIds = const <String>[];
+  List<Deal> _deals = const <Deal>[];
+  List<Product> _newLaunches = const <Product>[];
   bool _loading = false;
   bool _loaded = false;
   String? _error;
@@ -43,13 +46,22 @@ class CatalogController extends ChangeNotifier {
       _products = products;
       _byId = <String, Product>{for (final Product p in products) p.id: p};
       _loaded = true;
-      // Ranking is a nice-to-have on top of the catalogue: if it fails the
-      // catalogue still loads and Home falls back to the popular flag.
-      try {
-        _bestSellerIds = await _repository.fetchBestSellerIds(limit: 10);
-      } catch (_) {
-        _bestSellerIds = const <String>[];
-      }
+      // The shelves are extras on top of the catalogue: if any of them fails
+      // the catalogue still loads, and Home simply hides that section.
+      await Future.wait<void>(<Future<void>>[
+        _repository
+            .fetchBestSellerIds(limit: 10)
+            .then((List<String> ids) => _bestSellerIds = ids)
+            .catchError((_) => _bestSellerIds = const <String>[]),
+        _repository
+            .fetchDeals(limit: 20)
+            .then((List<Deal> d) => _deals = d)
+            .catchError((_) => _deals = const <Deal>[]),
+        _repository
+            .fetchNewLaunches(limit: 10)
+            .then((List<Product> p) => _newLaunches = p)
+            .catchError((_) => _newLaunches = const <Product>[]),
+      ]);
     } on AppException catch (e) {
       _error = e.message;
     } catch (_) {
@@ -82,6 +94,13 @@ class CatalogController extends ChangeNotifier {
     }
     return ranked.isEmpty ? popular : ranked;
   }
+
+  /// Products with a price the seller actually dropped, or stock running low.
+  /// Empty is normal — Home hides the shelf rather than showing a fake offer.
+  List<Deal> get deals => _deals;
+
+  /// Newest products first. Used for the New Launches rail.
+  List<Product> get newLaunches => _newLaunches;
 
   /// How many of the top sellers carry the Trending badge in listings.
   static const int trendingCount = 5;

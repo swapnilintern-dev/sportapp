@@ -44,6 +44,25 @@ class HttpCatalogRepository implements CatalogRepository {
         .map((dynamic e) => e.toString())
         .toList(growable: false);
   }
+
+  @override
+  Future<List<Deal>> fetchDeals({int limit = 20}) async =>
+      _list(await _api.get('/catalog/deals', query: {'limit': '$limit'}))
+          .map(Deal.fromJson)
+          .toList();
+
+  @override
+  Future<List<Product>> fetchNewLaunches({int limit = 10}) async =>
+      _list(await _api.get('/catalog/new-launches', query: {'limit': '$limit'}))
+          .map(Product.fromJson)
+          .toList();
+
+  @override
+  Future<Promotion?> fetchActivePromotion() async {
+    final Map<String, dynamic> d = _map(await _api.get('/promotions/active'));
+    final dynamic promotion = d['promotion'];
+    return promotion == null ? null : Promotion.fromJson(_map(promotion));
+  }
 }
 
 class HttpAuthRepository implements AuthRepository {

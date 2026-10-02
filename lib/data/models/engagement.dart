@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_tokens.dart';
+import 'catalog.dart';
 
 //==============================================================================
 // SPOCART — Notifications & quotations
 //------------------------------------------------------------------------------
 // AppNotification — an inbox entry that deep-links to an order or product.
 // QuoteRequest    — a request for quotation (bulk / custom team order).
+// Promotion       — an offer the admin panel turned on.
+// Deal            — a product with a recorded price drop or low tracked stock.
 //==============================================================================
 
 enum NotificationType {
@@ -235,5 +238,100 @@ class QuoteRequest {
         status: QuoteStatusMeta.fromName(json['status'] as String?),
         quotedTotal: (json['quotedTotal'] as num?)?.toDouble(),
         designFileName: json['designFileName'] as String?,
+      );
+}
+
+//------------------------------------------------------------------------------
+// Promotions
+//------------------------------------------------------------------------------
+
+/// Where tapping a promotion takes the buyer. The server validated the target
+/// when it was saved, so the app only has to route — never judge safety.
+enum PromotionLink { none, product, category, url }
+
+PromotionLink _promotionLinkFrom(String? raw) => switch (raw) {
+      'product' => PromotionLink.product,
+      'category' => PromotionLink.category,
+      'url' => PromotionLink.url,
+      _ => PromotionLink.none,
+    };
+
+/// An offer or announcement the admin panel turned on. Everything about it —
+/// text, image, timing, who sees it — comes from the server.
+class Promotion {
+  const Promotion({
+    required this.id,
+    required this.title,
+    required this.body,
+    this.imageUrl,
+    this.link = PromotionLink.none,
+    this.linkTarget,
+    required this.endsAt,
+  });
+
+  final String id;
+  final String title;
+  final String body;
+  final String? imageUrl;
+  final PromotionLink link;
+  final String? linkTarget;
+  final DateTime endsAt;
+
+  bool get hasAction => link != PromotionLink.none && (linkTarget ?? '').isNotEmpty;
+
+  /// Label for the action button, chosen from where the promotion leads.
+  String get actionLabel => switch (link) {
+        PromotionLink.product => 'View Product',
+        PromotionLink.category => 'Shop Now',
+        PromotionLink.url => 'Know More',
+        PromotionLink.none => 'OK',
+      };
+
+  factory Promotion.fromJson(Map<String, dynamic> json) => Promotion(
+        id: json['id'] as String,
+        title: json['title'] as String? ?? '',
+        body: json['body'] as String? ?? '',
+        imageUrl: json['imageUrl'] as String?,
+        link: _promotionLinkFrom(json['linkType'] as String?),
+        linkTarget: json['linkTarget'] as String?,
+        endsAt: DateTime.tryParse(json['endsAt'] as String? ?? '') ??
+            DateTime.now().add(const Duration(days: 1)),
+      );
+}
+
+//------------------------------------------------------------------------------
+// Deals
+//------------------------------------------------------------------------------
+
+/// A product on the Deals shelf. [previousPrice] exists only because the server
+/// recorded that price change, and [stockLeft] only because the seller tracks
+/// that product's stock — so neither is ever a made-up number.
+class Deal {
+  const Deal({
+    required this.product,
+    required this.currentPrice,
+    this.previousPrice,
+    this.stockLeft,
+  });
+
+  final Product product;
+  final double currentPrice;
+  final double? previousPrice;
+  final int? stockLeft;
+
+  bool get hasDrop => previousPrice != null && previousPrice! > currentPrice;
+  bool get isLowStock => stockLeft != null && stockLeft! > 0;
+
+  double get saving => hasDrop ? previousPrice! - currentPrice : 0;
+
+  /// Whole-percent saving, for the badge. 0 when there is no recorded drop.
+  int get savingPercent =>
+      hasDrop && previousPrice! > 0 ? ((saving / previousPrice!) * 100).round() : 0;
+
+  factory Deal.fromJson(Map<String, dynamic> json) => Deal(
+        product: Product.fromJson(json),
+        currentPrice: (json['currentPrice'] as num?)?.toDouble() ?? 0,
+        previousPrice: (json['previousPrice'] as num?)?.toDouble(),
+        stockLeft: (json['stockLeft'] as num?)?.toInt(),
       );
 }

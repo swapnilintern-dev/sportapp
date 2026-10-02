@@ -51,6 +51,17 @@ abstract class CatalogRepository {
   /// with any products an admin pinned in front. May be empty when nothing has
   /// sold yet — callers fall back to the catalogue's own "popular" flag.
   Future<List<String>> fetchBestSellerIds({int limit});
+
+  /// Products with a price the seller actually dropped, or stock the seller
+  /// actually tracks and is running low. Empty is normal.
+  Future<List<Deal>> fetchDeals({int limit});
+
+  /// Newest products first, so a fresh range is visible before it has any
+  /// sales history to rank on.
+  Future<List<Product>> fetchNewLaunches({int limit});
+
+  /// The one offer to show right now, or null. Never throws for "no offer".
+  Future<Promotion?> fetchActivePromotion();
 }
 
 class DemoCatalogRepository implements CatalogRepository {
@@ -78,6 +89,27 @@ class DemoCatalogRepository implements CatalogRepository {
         .take(limit)
         .map((Product p) => p.id)
         .toList(growable: false);
+  }
+
+  /// Offline there is no price history and no stock count, so there are no
+  /// honest deals to show. The shelf simply stays hidden.
+  @override
+  Future<List<Deal>> fetchDeals({int limit = 20}) async {
+    await _latency(200);
+    return const <Deal>[];
+  }
+
+  @override
+  Future<List<Product>> fetchNewLaunches({int limit = 10}) async {
+    await _latency(200);
+    return kDemoProducts.reversed.take(limit).toList(growable: false);
+  }
+
+  /// Offers come from the admin panel, which the demo backend does not have.
+  @override
+  Future<Promotion?> fetchActivePromotion() async {
+    await _latency(150);
+    return null;
   }
 }
 

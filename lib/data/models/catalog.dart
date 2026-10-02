@@ -82,6 +82,9 @@ class Product {
     this.inStock = true,
     this.popular = false,
     this.customisable = false,
+    this.videoUrl,
+    this.videoThumbnailUrl,
+    this.stockLeft,
   });
 
   final String id;
@@ -111,6 +114,18 @@ class Product {
   final bool popular;
   final bool customisable;
 
+  /// Official product video (YouTube), validated by the server. Null when the
+  /// product has none; [videoThumbnailUrl] is set exactly when this is.
+  final String? videoUrl;
+  final String? videoThumbnailUrl;
+
+  /// Units left, and only when the seller actually tracks this product's stock
+  /// and it is running low. Null means we say nothing about quantity rather
+  /// than inventing scarcity.
+  final int? stockLeft;
+
+  bool get hasVideo => videoUrl != null && videoUrl!.isNotEmpty;
+
   String get primaryImage => images.isEmpty ? '' : images.first;
 
   factory Product.fromJson(Map<String, dynamic> json) {
@@ -137,6 +152,9 @@ class Product {
       inStock: json['inStock'] as bool? ?? true,
       popular: json['popular'] as bool? ?? false,
       customisable: json['customisable'] as bool? ?? false,
+      videoUrl: json['videoUrl'] as String?,
+      videoThumbnailUrl: json['videoThumbnailUrl'] as String?,
+      stockLeft: (json['stockLeft'] as num?)?.toInt(),
     );
   }
 

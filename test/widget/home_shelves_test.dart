@@ -1,0 +1,233 @@
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:sport/app/app_scope.dart';
+import 'package:sport/core/network/api_client.dart';
+import 'package:sport/data/local/local_store.dart';
+import 'package:sport/features/catalog/widgets/product_video.dart';
+import 'package:sport/main.dart';
+
+//==============================================================================
+// Home's Deals and New Launches shelves, the offer popup and the product video
+// section, driven through the real HTTP repositories against a fake API — so
+// what is asserted is what the app would do against the server.
+//==============================================================================
+
+Map<String, dynamic> _product(
+  String id,
+  String name, {
+  double price = 500,
+  String? videoUrl,
+  int? stockLeft,
+}) =>
+    <String, dynamic>{
+      'id': id,
+      'name': name,
+      'brand': 'SPOCART',
+      'categoryId': 'cricket',
+      'subcategory': 'Bats',
+      'unit': 'pc',
+      'moq': 10,
+      'description': 'Test product.',
+      'images': <String>[],
+      'sizes': <String>[],
+      'features': <Map<String, String>>[],
+      'rating': 4.5,
+      'reviewCount': 0,
+      'inStock': true,
+      'popular': true,
+      'customisable': false,
+      'tiers': <Map<String, dynamic>>[
+        {'minQty': 10, 'unitPrice': price},
+      ],
+      'videoUrl': ?videoUrl,
+      if (videoUrl != null)
+        'videoThumbnailUrl': 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg',
+      'stockLeft': stockLeft,
+    };
+
+void main() {
+  late Map<String, dynamic Function()> routes;
+
+  setUp(() {
+    routes = <String, dynamic Function()>{
+      '/api/v1/auth/otp/send': () =>
+          {'mobile': '9876543210', 'expiresAt': '2099-01-01T00:00:00Z', 'devCode': '123456'},
+      '/api/v1/auth/otp/verify': () => {
+            'token': 'jwt-test',
+            'user': {
+              'mobile': '9876543210',
+              'signedInAt': '2026-10-02T10:00:00Z',
+              'profile': null,
+              'creditLimit': 100000,
+            },
+          },
+      '/api/v1/auth/me': () => {
+            'mobile': '9876543210',
+            'signedInAt': '2026-10-02T10:00:00Z',
+            'profile': null,
+            'creditLimit': 100000,
+          },
+      '/api/v1/catalog/categories': () => [
+            {
+              'id': 'cricket', 'name': 'Cricket', 'icon': 'sports_cricket',
+              'subcategories': ['Bats'], 'imageUrl': null,
+            }
+          ],
+      '/api/v1/catalog/products': () => [
+            _product('bat-1', 'Willow Bat',
+                videoUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+                stockLeft: 7),
+            _product('ball-1', 'Leather Ball'),
+          ],
+      '/api/v1/catalog/best-sellers': () => {'productIds': <String>['bat-1', 'ball-1']},
+      '/api/v1/catalog/deals': () => <Map<String, dynamic>>[],
+      '/api/v1/catalog/new-launches': () => <Map<String, dynamic>>[],
+      '/api/v1/promotions/active': () => {'promotion': null},
+      '/api/v1/notifications': () => {'items': <Map<String, dynamic>>[], 'unread': 0},
+      '/api/v1/orders': () => <Map<String, dynamic>>[],
+    };
+  });
+
+  AppServices build() {
+    final MockClient client = MockClient((http.Request req) async {
+      final dynamic Function()? handler = routes[req.url.path];
+      if (handler == null) {
+        return http.Response(
+            jsonEncode({'ok': false, 'message': 'Route not found: ${req.url.path}'}), 404);
+      }
+      return http.Response(jsonEncode({'ok': true, 'data': handler()}), 200,
+          headers: {'content-type': 'application/json'});
+    });
+    return AppServices.http(MemoryStore(),
+        client: ApiClient(client: client, baseUrl: 'http://api.test/api/v1'));
+  }
+
+  /// Home's own list — every tab in the IndexedStack keeps a scrollable alive,
+  /// so the one to drive has to be named.
+  Future<void> scrollHome(WidgetTester tester, Finder target) async {
+    await tester.scrollUntilVisible(
+      target,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+  }
+
+  Future<AppServices> pumpSignedIn(WidgetTester tester) async {
+    final AppServices services = build();
+    tester.view.physicalSize = const Size(1170, 2532);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(SpocartApp(services: services));
+    await tester.pump(const Duration(milliseconds: 2400));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextFormField), '9876543210');
+    await tester.tap(find.text('Send OTP'));
+    await tester.pumpAndSettle(const Duration(milliseconds: 600));
+    await tester.enterText(find.byType(TextField).first, '123456');
+    await tester.pumpAndSettle(const Duration(milliseconds: 900));
+    return services;
+  }
+
+  testWidgets('empty shelves are hidden, not shown empty', (tester) async {
+    await pumpSignedIn(tester);
+    expect(find.text('Best Sellers'), findsOneWidget);
+    expect(find.text('Deals'), findsNothing);
+    expect(find.text('New Launches'), findsNothing);
+  });
+
+  testWidgets('a recorded drop and a tracked stock both show honestly',
+      (tester) async {
+    routes['/api/v1/catalog/deals'] = () => [
+          {
+            ..._product('bat-1', 'Willow Bat', price: 1500),
+            'currentPrice': 1500,
+            'previousPrice': 1800,
+            'stockLeft': null,
+          },
+          {
+            ..._product('ball-1', 'Leather Ball', price: 400),
+            'currentPrice': 400,
+            'previousPrice': null,
+            'stockLeft': 6,
+          },
+        ];
+    await pumpSignedIn(tester);
+
+    await scrollHome(tester, find.text('Deals'));
+
+    // The drop shows its percent and the old price struck through.
+    expect(find.text('17% off'), findsOneWidget);
+    expect(find.text('₹1,800'), findsOneWidget);
+    // The low-stock product claims a count but never a saving.
+    expect(find.text('Only 6 left'), findsOneWidget);
+    expect(find.textContaining('% off'), findsOneWidget);
+  });
+
+  testWidgets('New Launches appears when the server sends any', (tester) async {
+    routes['/api/v1/catalog/new-launches'] =
+        () => [_product('new-1', 'Brand New Bat')];
+    await pumpSignedIn(tester);
+
+    await scrollHome(tester, find.text('New Launches'));
+    expect(find.text('Brand New Bat'), findsWidgets);
+  });
+
+  testWidgets('the offer popup waits, then obeys "don\'t show again today"',
+      (tester) async {
+    routes['/api/v1/promotions/active'] = () => {
+          'promotion': {
+            'id': 'promo-1',
+            'title': 'Diwali Bulk Sale',
+            'body': 'Extra 10% off above 100 units.',
+            'imageUrl': null,
+            'linkType': 'none',
+            'linkTarget': null,
+            'endsAt': '2099-12-31T00:00:00Z',
+          }
+        };
+    final AppServices services = await pumpSignedIn(tester);
+
+    // It must not be on screen the instant Home opens.
+    expect(find.text('Diwali Bulk Sale'), findsNothing);
+
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pumpAndSettle();
+    expect(find.text('Diwali Bulk Sale'), findsOneWidget);
+
+    await tester.tap(find.text("Don't show this again today"));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+    expect(find.text('Diwali Bulk Sale'), findsNothing);
+
+    // A later launch on the same device and day stays quiet.
+    services.promotions.reset();
+    expect(await services.promotions.takePending(), isNull);
+  });
+
+  testWidgets('the video section shows only for a product that has one',
+      (tester) async {
+    await pumpSignedIn(tester);
+
+    await tester.tap(find.text('Willow Bat').first);
+    await tester.pumpAndSettle();
+    expect(find.byType(ProductVideoSection), findsOneWidget);
+    // The section is built with the rest of the page, so no scrolling is
+    // needed to know it is there.
+    expect(find.text('Product Video'), findsOneWidget);
+    expect(find.text('Only 7 left in stock'), findsOneWidget);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Leather Ball').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Product Video'), findsNothing);
+  });
+}
