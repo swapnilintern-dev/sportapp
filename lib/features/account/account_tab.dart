@@ -40,7 +40,10 @@ class AccountTab extends StatelessWidget {
         ],
       ),
       body: ListenableBuilder(
-        listenable: Listenable.merge([session, services.notifications]),
+        // Also the rewards state: the Rewards entry appears only once the
+        // business has switched the programme on.
+        listenable: Listenable.merge(
+            [session, services.notifications, services.rewards]),
         builder: (context, _) {
           final UserSession? user = session.session;
           final BusinessProfile? profile = user?.profile;
@@ -114,6 +117,14 @@ class AccountTab extends StatelessWidget {
                       label: 'Wishlist',
                       onTap: () => AppNavigator.toWishlist(context),
                     ),
+                    // Only once the business has switched rewards on; the
+                    // controller reports that, this does not assume it.
+                    if (services.rewards.active)
+                      AccountMenuItem(
+                        icon: Icons.card_giftcard_outlined,
+                        label: 'Rewards',
+                        onTap: () => AppNavigator.toRewards(context),
+                      ),
                     AccountMenuItem(
                       icon: Icons.notifications_none_rounded,
                       label: 'Notifications',

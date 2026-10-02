@@ -448,3 +448,191 @@ class ReviewableProduct {
         image: json['image'] as String? ?? '',
       );
 }
+
+//------------------------------------------------------------------------------
+// Rewards and credits
+//------------------------------------------------------------------------------
+
+/// A gift the business offers once a buyer's purchases pass a total.
+class RewardTier {
+  const RewardTier({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.giftLabel,
+    required this.threshold,
+    required this.reached,
+    this.imageUrl,
+    this.status,
+  });
+
+  final String id;
+  final String name;
+  final String description;
+  final String giftLabel;
+  final double threshold;
+  final bool reached;
+  final String? imageUrl;
+
+  /// 'earned', 'claimed' or 'delivered' once the buyer has reached it.
+  final String? status;
+
+  bool get delivered => status == 'delivered';
+
+  factory RewardTier.fromJson(Map<String, dynamic> json) => RewardTier(
+        id: json['id'] as String,
+        name: json['name'] as String? ?? '',
+        description: json['description'] as String? ?? '',
+        giftLabel: json['giftLabel'] as String? ?? '',
+        threshold: (json['threshold'] as num?)?.toDouble() ?? 0,
+        reached: json['reached'] as bool? ?? false,
+        imageUrl: json['imageUrl'] as String?,
+        status: json['status'] as String?,
+      );
+}
+
+/// How far the buyer is from the next gift.
+class RewardProgress {
+  const RewardProgress({
+    required this.name,
+    required this.giftLabel,
+    required this.threshold,
+    required this.remaining,
+    required this.fraction,
+  });
+
+  final String name;
+  final String giftLabel;
+  final double threshold;
+  final double remaining;
+
+  /// 0–1, already clamped.
+  final double fraction;
+
+  factory RewardProgress.fromJson(Map<String, dynamic> json) => RewardProgress(
+        name: json['name'] as String? ?? '',
+        giftLabel: json['giftLabel'] as String? ?? '',
+        threshold: (json['threshold'] as num?)?.toDouble() ?? 0,
+        remaining: (json['remaining'] as num?)?.toDouble() ?? 0,
+        fraction: ((json['progress'] as num?)?.toDouble() ?? 0).clamp(0.0, 1.0),
+      );
+}
+
+/// Everything the Rewards screen shows. When [active] is false the business has
+/// not switched the programme on and the app shows nothing at all.
+class RewardsSummary {
+  const RewardsSummary({
+    required this.active,
+    this.balance = 0,
+    this.creditsWorth = 0,
+    this.purchasedTotal = 0,
+    this.streak = 0,
+    this.checkedInToday = false,
+    this.earnsOnCheckIn = false,
+    this.earnsOnPurchase = false,
+    this.nextTier,
+    this.tiers = const <RewardTier>[],
+  });
+
+  final bool active;
+  final int balance;
+
+  /// What the balance is worth in rupees, at the configured rate.
+  final double creditsWorth;
+  final double purchasedTotal;
+  final int streak;
+  final bool checkedInToday;
+  final bool earnsOnCheckIn;
+  final bool earnsOnPurchase;
+  final RewardProgress? nextTier;
+  final List<RewardTier> tiers;
+
+  static const RewardsSummary off = RewardsSummary(active: false);
+
+  factory RewardsSummary.fromJson(Map<String, dynamic> json) {
+    if (json['active'] != true) return RewardsSummary.off;
+    final Map<String, dynamic> settings =
+        Map<String, dynamic>.from(json['settings'] as Map? ?? const <String, dynamic>{});
+    final Map<String, dynamic>? next = json['nextTier'] == null
+        ? null
+        : Map<String, dynamic>.from(json['nextTier'] as Map);
+    return RewardsSummary(
+      active: true,
+      balance: (json['balance'] as num?)?.toInt() ?? 0,
+      creditsWorth: (json['creditsWorth'] as num?)?.toDouble() ?? 0,
+      purchasedTotal: (json['purchasedTotal'] as num?)?.toDouble() ?? 0,
+      streak: (json['streak'] as num?)?.toInt() ?? 0,
+      checkedInToday: json['checkedInToday'] as bool? ?? false,
+      earnsOnCheckIn: settings['earnsOnCheckIn'] as bool? ?? false,
+      earnsOnPurchase: settings['earnsOnPurchase'] as bool? ?? false,
+      nextTier: next == null ? null : RewardProgress.fromJson(next),
+      tiers: (json['tiers'] as List<dynamic>? ?? const <dynamic>[])
+          .map((dynamic e) => RewardTier.fromJson(Map<String, dynamic>.from(e as Map)))
+          .toList(),
+    );
+  }
+}
+
+/// One movement of credits, so a balance can be explained line by line.
+class CreditEntry {
+  const CreditEntry({
+    required this.id,
+    required this.delta,
+    required this.reason,
+    required this.note,
+    required this.at,
+    this.orderId,
+  });
+
+  final String id;
+  final int delta;
+  final String reason;
+  final String note;
+  final DateTime at;
+  final String? orderId;
+
+  bool get isEarn => delta > 0;
+
+  /// Plain wording for the reason the server recorded.
+  String get label => switch (reason) {
+        'orderEarned' => 'Earned on an order',
+        'orderReversed' => 'Order cancelled',
+        'dailyCheckIn' => 'Daily check-in',
+        'referral' => 'Referral',
+        'redeemed' => 'Used on an order',
+        'adminAdjust' => 'Adjusted by SPOCART',
+        'expired' => 'Expired',
+        _ => 'Credits',
+      };
+
+  factory CreditEntry.fromJson(Map<String, dynamic> json) => CreditEntry(
+        id: json['id'].toString(),
+        delta: (json['delta'] as num?)?.toInt() ?? 0,
+        reason: json['reason'] as String? ?? '',
+        note: json['note'] as String? ?? '',
+        at: DateTime.tryParse(json['at'] as String? ?? '') ?? DateTime.now(),
+        orderId: json['orderId'] as String?,
+      );
+}
+
+/// The result of claiming today's check-in.
+class CheckInResult {
+  const CheckInResult({
+    required this.credited,
+    required this.alreadyCheckedIn,
+    required this.balance,
+    required this.streak,
+  });
+
+  final int credited;
+  final bool alreadyCheckedIn;
+  final int balance;
+  final int streak;
+
+  factory CheckInResult.fromJson(Map<String, dynamic> json) => CheckInResult(
+        credited: (json['credited'] as num?)?.toInt() ?? 0,
+        alreadyCheckedIn: json['alreadyCheckedIn'] as bool? ?? false,
+        balance: (json['balance'] as num?)?.toInt() ?? 0,
+        streak: (json['streak'] as num?)?.toInt() ?? 0,
+      );
+}

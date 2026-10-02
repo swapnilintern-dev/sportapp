@@ -6,6 +6,7 @@ import '../data/models/order.dart';
 import '../features/account/account_screens.dart';
 import '../features/account/business_registration_screen.dart';
 import '../features/account/change_mobile_screen.dart';
+import '../features/rewards/rewards_screen.dart';
 import '../features/account/dashboard_screen.dart';
 import '../features/account/settings_screen.dart';
 import '../features/address/address_form_screen.dart';
@@ -166,6 +167,9 @@ abstract final class AppNavigator {
 
   static Future<void> toTeamMembers(BuildContext context) =>
       _push<void>(context, const TeamMembersScreen());
+
+  static Future<void> toRewards(BuildContext context) =>
+      _push<void>(context, const RewardsScreen());
 
   static Future<void> toDashboard(BuildContext context) =>
       _push<void>(context, const DashboardScreen());

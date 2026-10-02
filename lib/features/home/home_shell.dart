@@ -36,6 +36,9 @@ class _HomeShellState extends State<HomeShell> {
     final AppServices services = AppScope.of(context);
     services.catalog.load();
     services.notifications.load();
+    // Asked once per launch so the Account menu knows whether the rewards
+    // programme is running; it hides the entry until the business turns it on.
+    services.rewards.load();
     // The offer waits a few seconds so it never lands on a buyer mid-tap, and
     // the controller hands it over at most once per launch.
     WidgetsBinding.instance.addPostFrameCallback((_) {

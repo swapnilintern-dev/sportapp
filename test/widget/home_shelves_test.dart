@@ -91,6 +91,8 @@ void main() {
       '/api/v1/notifications': () => {'items': <Map<String, dynamic>>[], 'unread': 0},
       '/api/v1/orders': () => <Map<String, dynamic>>[],
       '/api/v1/reviews/pending': () => <Map<String, dynamic>>[],
+      '/api/v1/rewards': () => {'active': false, 'settings': <String, dynamic>{}},
+      '/api/v1/rewards/ledger': () => {'entries': <Map<String, dynamic>>[], 'total': 0, 'balance': 0},
       '/api/v1/catalog/products/bat-1/reviews': () => {
             'reviews': <Map<String, dynamic>>[],
             'total': 0, 'average': 0,
@@ -296,6 +298,66 @@ void main() {
     await tester.enterText(find.byType(TextField).first, 'willow');
     await tester.pumpAndSettle();
     expect(find.textContaining('showing the closest products'), findsNothing);
+  });
+
+  testWidgets('Rewards stays hidden until the business switches it on',
+      (tester) async {
+    await pumpSignedIn(tester);
+    await tester.tap(find.text('Account'));
+    await tester.pumpAndSettle();
+    expect(find.text('Rewards'), findsNothing);
+  });
+
+  testWidgets('Rewards appears, and shows only what the server set',
+      (tester) async {
+    routes['/api/v1/rewards'] = () => {
+          'active': true,
+          'settings': {'earnsOnCheckIn': true, 'earnsOnPurchase': true},
+          'balance': 240,
+          'creditsWorth': 60,
+          'purchasedTotal': 117528,
+          'streak': 3,
+          'checkedInToday': true,
+          'nextTier': {
+            'name': 'Gold', 'giftLabel': 'Free kit bag',
+            'threshold': 300000, 'remaining': 182472, 'progress': 0.39,
+          },
+          'tiers': [
+            {
+              'id': 't1', 'name': 'Silver', 'description': '',
+              'giftLabel': 'Branded cap', 'threshold': 50000,
+              'reached': true, 'status': 'delivered',
+            }
+          ],
+        };
+    routes['/api/v1/rewards/ledger'] = () => {
+          'entries': [
+            {
+              'id': 1, 'delta': 240, 'reason': 'orderEarned',
+              'note': 'Earned on order SC-2026-0004', 'at': '2026-10-01T00:00:00Z',
+            }
+          ],
+          'total': 1, 'balance': 240,
+        };
+    await pumpSignedIn(tester);
+    await tester.tap(find.text('Account'));
+    await tester.pumpAndSettle();
+
+    // ensureVisible scrolls whichever list actually holds it — the Account
+    // tab's, not Home's, which is also alive inside the IndexedStack.
+    await tester.ensureVisible(find.text('Rewards'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Rewards'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('240'), findsOneWidget);
+    expect(find.text('3 day streak'), findsOneWidget);
+    // Already checked in today, so no button to claim again.
+    expect(find.text('Check In'), findsNothing);
+    expect(find.text('Next gift: Free kit bag'), findsOneWidget);
+    expect(find.text('Branded cap'), findsOneWidget);
+    expect(find.text('Received'), findsOneWidget);
+    expect(find.text('Earned on an order'), findsOneWidget);
   });
 
   testWidgets('the video section shows only for a product that has one',

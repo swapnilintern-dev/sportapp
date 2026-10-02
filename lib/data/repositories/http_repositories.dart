@@ -171,6 +171,29 @@ class HttpAuthRepository implements AuthRepository {
   }
 }
 
+class HttpRewardRepository implements RewardRepository {
+  HttpRewardRepository(this._api);
+
+  final ApiClient _api;
+
+  @override
+  Future<RewardsSummary> fetchRewards() async =>
+      RewardsSummary.fromJson(_map(await _api.get('/rewards')));
+
+  @override
+  Future<List<CreditEntry>> fetchLedger({int offset = 0, int limit = 25}) async {
+    final Map<String, dynamic> d = _map(await _api
+        .get('/rewards/ledger', query: {'offset': '$offset', 'limit': '$limit'}));
+    return (d['entries'] as List<dynamic>? ?? const <dynamic>[])
+        .map((dynamic e) => CreditEntry.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
+  @override
+  Future<CheckInResult> checkIn() async =>
+      CheckInResult.fromJson(_map(await _api.post('/rewards/check-in')));
+}
+
 class HttpReviewRepository implements ReviewRepository {
   HttpReviewRepository(this._api);
 

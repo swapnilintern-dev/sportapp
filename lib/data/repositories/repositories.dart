@@ -69,6 +69,43 @@ abstract class CatalogRepository {
 }
 
 //------------------------------------------------------------------------------
+// Rewards
+//------------------------------------------------------------------------------
+
+abstract class RewardRepository {
+  /// The whole Rewards screen in one call. When the programme is switched off
+  /// the server says so and the app shows nothing.
+  Future<RewardsSummary> fetchRewards();
+
+  /// Every credit movement, newest first.
+  Future<List<CreditEntry>> fetchLedger({int offset, int limit});
+
+  /// Claims today's check-in. Claiming twice in a day earns nothing the second
+  /// time — the server decides, using its own date.
+  Future<CheckInResult> checkIn();
+}
+
+/// Rewards are a business programme run from the admin panel, so the offline
+/// demo backend reports it as switched off rather than inventing a balance.
+class DemoRewardRepository implements RewardRepository {
+  const DemoRewardRepository();
+
+  @override
+  Future<RewardsSummary> fetchRewards() async {
+    await _latency(200);
+    return RewardsSummary.off;
+  }
+
+  @override
+  Future<List<CreditEntry>> fetchLedger({int offset = 0, int limit = 25}) async =>
+      const <CreditEntry>[];
+
+  @override
+  Future<CheckInResult> checkIn() async =>
+      throw const AppException('Daily check-in is not switched on.');
+}
+
+//------------------------------------------------------------------------------
 // Reviews
 //------------------------------------------------------------------------------
 
