@@ -28,6 +28,11 @@ dependencies:
   # SPOCART API client + Razorpay checkout (UPI, cards, net banking, wallets).
   http: ^1.6.0
   razorpay_flutter: ^1.4.6
+  # Voice search: the phone's own speech engine, so nothing is uploaded.
+  speech_to_text: ^7.5.0
+
+  # Barcode / QR scanning on the search bar.
+  mobile_scanner: ^7.4.2
 
 dev_dependencies:
   flutter_test:

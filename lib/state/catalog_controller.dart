@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../core/search/product_search.dart';
 import '../data/models/catalog.dart';
 import '../data/models/engagement.dart';
 import '../data/repositories/repositories.dart';
@@ -119,11 +120,25 @@ class CatalogController extends ChangeNotifier {
               (subcategory == null || p.subcategory == subcategory))
           .toList(growable: false);
 
-  List<Product> search(String query) {
-    final String q = query.trim();
-    if (q.isEmpty) return const <Product>[];
-    return _products.where((p) => p.matchesQuery(q)).toList(growable: false);
+  /// Ranked search over the loaded catalogue: token matching, the trade's own
+  /// vocabulary, and typo forgiveness when nothing matched exactly.
+  List<Product> search(String query) =>
+      searchHits(query).map((SearchHit h) => h.product).toList(growable: false);
+
+  /// The same results with their reason, for a screen that wants to say
+  /// "showing results for the closest match".
+  List<SearchHit> searchHits(String query) => searchProducts(_products, query);
+
+  /// True when the results only came back after forgiving a typo.
+  bool searchWasCorrected(String query) {
+    final List<SearchHit> hits = searchHits(query);
+    return hits.isNotEmpty && hits.first.corrected;
   }
+
+  /// Resolves a scanned barcode to a product. The server decides; a code no
+  /// product carries throws, and the caller reports that rather than guessing.
+  Future<Product> productByBarcode(String code) =>
+      _repository.productByBarcode(code);
 
   /// Products a buyer might also want, excluding [product] itself.
   List<Product> related(Product product, {int limit = 6}) => _products

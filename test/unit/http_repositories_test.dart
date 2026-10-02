@@ -215,6 +215,30 @@ void main() {
     });
   });
 
+  group('Barcode lookup', () {
+    test('a known code resolves to its product', () async {
+      fake.routes['GET /api/v1/catalog/barcode/8901234567890'] = (_) => {
+            'id': 'ck-kashmir-willow-bat', 'name': 'Kashmir Willow Cricket Bat',
+            'brand': 'SPOCART', 'categoryId': 'cricket', 'subcategory': 'Bats',
+            'unit': 'pc', 'moq': 10, 'description': '', 'images': [],
+            'tiers': [{'minQty': 10, 'unitPrice': 1800}],
+          };
+      final Product p =
+          await HttpCatalogRepository(api).productByBarcode('8901234567890');
+      expect(p.id, 'ck-kashmir-willow-bat');
+    });
+
+    test('a code no product carries is reported, not guessed at', () async {
+      fake.routes['GET /api/v1/catalog/barcode/0000000000000'] = (_) => http.Response(
+          jsonEncode({'ok': false, 'message': 'No SPOCART product carries that barcode.'}), 404);
+      await expectLater(
+        HttpCatalogRepository(api).productByBarcode('0000000000000'),
+        throwsA(isA<AppException>().having((AppException e) => e.message, 'message',
+            contains('carries that barcode'))),
+      );
+    });
+  });
+
   group('PIN code lookup', () {
     test('returns the city and state for a PIN', () async {
       fake.routes['GET /api/v1/addresses/pincode/411001'] = (_) => {

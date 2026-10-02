@@ -1,4 +1,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Voice search: the phone's own speech engine. Held only while the mic
+         button is pressed; nothing is recorded or uploaded. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- Barcode / QR scanning on the search bar. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- Both are conveniences, so a device without them still installs. -->
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
     <application
         android:label="SPOCART"
         android:name="${applicationName}"

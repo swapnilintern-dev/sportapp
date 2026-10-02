@@ -9,14 +9,21 @@ import '../../core/widgets/layout.dart';
 import '../../core/widgets/state_views.dart';
 import '../../data/models/catalog.dart';
 import '../../state/catalog_controller.dart';
+import '../../core/widgets/buttons.dart';
+import '../../core/widgets/feedback.dart';
+import '../../data/repositories/repositories.dart';
+import 'barcode_scan_screen.dart';
 import 'product_list_screen.dart';
 import 'widgets/product_widgets.dart';
+import 'widgets/voice_search.dart';
 
 //==============================================================================
 // SPOCART — Search
 //------------------------------------------------------------------------------
-// Live search over name / brand / sub-category with popular suggestions and
-// category shortcuts before a query is typed.
+// Ranked search over name / brand / sub-category that understands the trade's
+// vocabulary and forgives a typo, with popular suggestions and category
+// shortcuts before a query is typed. The mic dictates a search on the phone's
+// own engine; the scanner reads a carton's barcode and the server resolves it.
 //==============================================================================
 
 class SearchScreen extends StatefulWidget {
@@ -31,6 +38,8 @@ class SearchScreen extends StatefulWidget {
 class _SearchScreenState extends State<SearchScreen> {
   late final TextEditingController _query =
       TextEditingController(text: widget.initialQuery ?? '');
+
+  bool _scanning = false;
 
   static const List<String> _suggestions = <String>[
     'Cricket bat',
@@ -63,8 +72,22 @@ class _SearchScreenState extends State<SearchScreen> {
             onClear: () => setState(_query.clear),
           ),
         ),
+        actions: <Widget>[
+          AppIconButton(
+            icon: Icons.mic_none_rounded,
+            tooltip: 'Search by voice',
+            onPressed: _listen,
+          ),
+          AppIconButton(
+            icon: Icons.qr_code_scanner_rounded,
+            tooltip: 'Scan a barcode',
+            onPressed: _scan,
+          ),
+        ],
       ),
-      body: KeyboardDismisser(
+      body: _scanning
+          ? const AppLoader()
+          : KeyboardDismisser(
         child: ListenableBuilder(
           listenable: catalog,
           builder: (context, _) {
@@ -102,9 +125,21 @@ class _SearchScreenState extends State<SearchScreen> {
                     const SizedBox(height: AppSpacing.sm),
                 itemBuilder: (context, i) {
                   if (i == 0) {
-                    return Text(
-                      '${results.length} result${results.length == 1 ? '' : 's'}',
-                      style: AppTypography.small,
+                    final bool corrected = catalog.searchWasCorrected(q);
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          '${results.length} result${results.length == 1 ? '' : 's'}',
+                          style: AppTypography.small,
+                        ),
+                        if (corrected)
+                          Text(
+                            'No exact match for "$q" — showing the closest products.',
+                            style: AppTypography.caption
+                                .copyWith(color: AppColors.textSoft),
+                          ),
+                      ],
                     );
                   }
                   return ProductRow(product: results[i - 1]);
@@ -115,6 +150,40 @@ class _SearchScreenState extends State<SearchScreen> {
         ),
       ),
     );
+  }
+
+  /// Dictation goes into the ordinary search; nothing bypasses it.
+  Future<void> _listen() async {
+    final String? spoken = await showVoiceSearchSheet(context);
+    if (spoken == null || !mounted) return;
+    setState(() => _query.text = spoken);
+  }
+
+  /// A scanned code is resolved by the server. An unknown code is reported, not
+  /// guessed at, and the code is left in the box so it can be searched by hand.
+  Future<void> _scan() async {
+    final String? code = await scanProductBarcode(context);
+    if (code == null || !mounted) return;
+
+    setState(() => _scanning = true);
+    try {
+      final Product product =
+          await AppScope.of(context).catalog.productByBarcode(code);
+      if (!mounted) return;
+      await AppNavigator.toProduct(context, product);
+    } on AppException catch (e) {
+      if (mounted) {
+        setState(() => _query.text = code);
+        showAppSnackBar(context, e.message, tone: SnackTone.error);
+      }
+    } catch (_) {
+      if (mounted) {
+        showAppSnackBar(context, 'Could not look up that barcode.',
+            tone: SnackTone.error);
+      }
+    } finally {
+      if (mounted) setState(() => _scanning = false);
+    }
   }
 
   void _apply(String term) {

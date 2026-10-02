@@ -45,6 +45,11 @@ class _FakeCatalogRepository implements CatalogRepository {
 
   @override
   Future<Promotion?> fetchActivePromotion() async => null;
+
+  // Not what these tests are about: the demo catalogue carries no barcodes.
+  @override
+  Future<Product> productByBarcode(String code) async =>
+      throw const AppException('No SPOCART product carries that barcode.');
 }
 
 Future<CatalogController> _loaded(_FakeCatalogRepository repo) async {

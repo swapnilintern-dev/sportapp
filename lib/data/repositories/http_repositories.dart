@@ -58,6 +58,10 @@ class HttpCatalogRepository implements CatalogRepository {
           .toList();
 
   @override
+  Future<Product> productByBarcode(String code) async =>
+      Product.fromJson(_map(await _api.get('/catalog/barcode/$code')));
+
+  @override
   Future<Promotion?> fetchActivePromotion() async {
     final Map<String, dynamic> d = _map(await _api.get('/promotions/active'));
     final dynamic promotion = d['promotion'];

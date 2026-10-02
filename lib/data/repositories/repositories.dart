@@ -62,6 +62,10 @@ abstract class CatalogRepository {
 
   /// The one offer to show right now, or null. Never throws for "no offer".
   Future<Promotion?> fetchActivePromotion();
+
+  /// The product carrying a scanned barcode. Throws an [AppException] when no
+  /// product has that code — the app says so rather than guessing at one.
+  Future<Product> productByBarcode(String code);
 }
 
 //------------------------------------------------------------------------------
@@ -232,6 +236,13 @@ class DemoCatalogRepository implements CatalogRepository {
   Future<Promotion?> fetchActivePromotion() async {
     await _latency(150);
     return null;
+  }
+
+  /// The demo catalogue carries no barcodes, so every scan is honestly a miss.
+  @override
+  Future<Product> productByBarcode(String code) async {
+    await _latency(300);
+    throw const AppException('No SPOCART product carries that barcode.');
   }
 }
 

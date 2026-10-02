@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:sport/app/app_scope.dart';
 import 'package:sport/core/network/api_client.dart';
+import 'package:sport/core/widgets/inputs.dart';
 import 'package:sport/data/local/local_store.dart';
 import 'package:sport/features/catalog/widgets/product_video.dart';
 import 'package:sport/main.dart';
@@ -272,6 +273,29 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Tap to rate'), findsOneWidget);
     expect(find.text('Post Review'), findsOneWidget);
+  });
+
+  testWidgets('search offers voice and scanning, and forgives a typo',
+      (tester) async {
+    await pumpSignedIn(tester);
+    // Home's search bar is read-only and opens the search screen.
+    await tester.tap(find.byType(AppSearchBar).first);
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Search by voice'), findsOneWidget);
+    expect(find.byTooltip('Scan a barcode'), findsOneWidget);
+
+    // "Wilow" is one letter off "Willow": the product still comes back, and
+    // the screen says it is the closest match rather than an exact one.
+    await tester.enterText(find.byType(TextField).first, 'wilow');
+    await tester.pumpAndSettle();
+    expect(find.text('Willow Bat'), findsOneWidget);
+    expect(find.textContaining('showing the closest products'), findsOneWidget);
+
+    // An exact query says nothing of the sort.
+    await tester.enterText(find.byType(TextField).first, 'willow');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('showing the closest products'), findsNothing);
   });
 
   testWidgets('the video section shows only for a product that has one',

@@ -76,5 +76,11 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>SPOCART uses the microphone only while you hold the mic button, so you can search for products by speaking instead of typing.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Speech recognition turns what you say into a product search. SPOCART does not record or store your voice.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>SPOCART uses the camera to scan a product barcode or QR code and open that product.</string>
 </dict>
 </plist>
