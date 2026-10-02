@@ -10,10 +10,14 @@ import '../../core/widgets/feedback.dart';
 import '../../core/widgets/layout.dart';
 import '../../core/widgets/media.dart';
 import '../../data/models/catalog.dart';
+import '../../data/models/engagement.dart';
+import '../../state/reviews_controller.dart';
 import '../../state/cart_controller.dart';
 import '../support/help_sheet.dart';
 import 'image_viewer_screen.dart';
 import 'widgets/product_video.dart';
+import 'widgets/review_widgets.dart';
+import 'widgets/write_review_sheet.dart';
 import 'widgets/product_widgets.dart';
 import 'widgets/size_picker.dart';
 
@@ -21,8 +25,9 @@ import 'widgets/size_picker.dart';
 // SPOCART — Product details
 //------------------------------------------------------------------------------
 // Gallery with wishlist toggle, price range + stock, key features, sizes,
-// bulk-pricing link, description, related products and the Add to Cart /
-// Buy Now bar. "Need help with this order?" opens the support sheet.
+// bulk-pricing link, description, video, reviews, related products and the
+// Add to Cart / Buy Now bar. "Need help with this order?" opens the support
+// sheet.
 //==============================================================================
 
 class ProductDetailsScreen extends StatefulWidget {
@@ -39,6 +44,20 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   String? _size;
 
   Product get product => widget.product;
+
+  @override
+  void initState() {
+    super.initState();
+    // Reviews are part of the page, not a separate screen, so they start
+    // loading with it. Both calls are safe to fail: the section just stays
+    // quiet.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final AppServices services = AppScope.of(context);
+      services.reviews.load(product.id);
+      services.reviews.loadReviewable();
+    });
+  }
 
   bool get _needsSize => product.sizes.isNotEmpty && _size == null;
 
@@ -224,6 +243,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                     label: const Text('Need help with this order?',
                         style: AppTypography.bodyStrong),
                   ),
+                  _ReviewsSection(product: product),
                   if (related.isNotEmpty) ...[
                     const SizedBox(height: AppSpacing.xl),
                     const Text('You may also need', style: AppTypography.h3),
@@ -412,6 +432,123 @@ class _Gallery extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// Ratings and reviews for this product. Writing one is offered only to a buyer
+/// the server says has received it; everyone else just reads.
+class _ReviewsSection extends StatelessWidget {
+  const _ReviewsSection({required this.product});
+
+  final Product product;
+
+  Future<void> _write(BuildContext context, {ProductReview? existing}) async {
+    await showWriteReviewSheet(
+      context,
+      productId: product.id,
+      productName: product.name,
+      existing: existing,
+    );
+  }
+
+  Future<void> _delete(BuildContext context, ProductReview review) async {
+    final bool ok = await showAppConfirmDialog(
+      context,
+      title: 'Delete your review?',
+      message: 'Other buyers will no longer see it.',
+      confirmLabel: 'Delete',
+      destructive: true,
+      icon: Icons.delete_outline_rounded,
+    );
+    if (!ok || !context.mounted) return;
+    try {
+      await AppScope.of(context).reviews.remove(review.id);
+    } catch (_) {
+      if (context.mounted) {
+        showAppSnackBar(context, 'Could not delete the review.',
+            tone: SnackTone.error);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ReviewsController reviews = AppScope.of(context).reviews;
+    return ListenableBuilder(
+      listenable: reviews,
+      builder: (context, _) {
+        final ReviewPage page = reviews.page;
+        final ProductReview? mine = reviews.mine;
+        final bool canWrite = mine != null || reviews.canReview(product.id);
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: AppSpacing.xl),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text('Ratings & Reviews', style: AppTypography.h3),
+                ),
+                if (canWrite)
+                  GhostButton(
+                    label: mine == null ? 'Write a review' : 'Edit yours',
+                    onPressed: () => _write(context, existing: mine),
+                  ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            if (reviews.loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (page.isEmpty)
+              AppCard(
+                color: AppColors.surface,
+                borderColor: AppColors.surface,
+                padding: const EdgeInsets.all(AppSpacing.md),
+                child: Row(
+                  children: [
+                    const Icon(Icons.rate_review_outlined,
+                        color: AppColors.textMuted),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        canWrite
+                            ? 'No reviews yet — yours would be the first.'
+                            : 'No reviews yet. Buyers can review a product once their order arrives.',
+                        style: AppTypography.small,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else ...[
+              RatingSummary(page: page),
+              const SizedBox(height: AppSpacing.sm),
+              for (final ProductReview r in page.reviews) ...[
+                ReviewTile(
+                  review: r,
+                  onEdit: r.mine ? () => _write(context, existing: r) : null,
+                  onDelete: r.mine ? () => _delete(context, r) : null,
+                ),
+                const SizedBox(height: AppSpacing.xs),
+              ],
+              if (reviews.hasMore)
+                Center(
+                  child: GhostButton(
+                    label: reviews.loadingMore
+                        ? 'Loading…'
+                        : 'Show more reviews (${page.total - page.reviews.length})',
+                    onPressed: reviews.loadingMore ? null : reviews.loadMore,
+                  ),
+                ),
+            ],
+          ],
+        );
+      },
     );
   }
 }

@@ -14,6 +14,8 @@ import '../../core/widgets/state_views.dart';
 import '../../data/models/order.dart';
 import '../../data/repositories/repositories.dart';
 import '../../state/orders_controller.dart';
+import '../../state/reviews_controller.dart';
+import '../catalog/widgets/write_review_sheet.dart';
 import '../invoices/invoice_pdf.dart';
 import '../support/help_sheet.dart';
 
@@ -38,6 +40,10 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   @override
   void initState() {
     super.initState();
+    // What this buyer may still review, for the delivered-order prompt.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) AppScope.of(context).reviews.loadReviewable();
+    });
     AppScope.of(context).orders.load();
   }
 
@@ -190,6 +196,10 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                             ],
                           ),
                         ),
+                        if (order.status == OrderStatus.delivered) ...[
+                          const SizedBox(height: AppSpacing.md),
+                          _RateThisOrder(order: order),
+                        ],
                         const SizedBox(height: AppSpacing.md),
                         SecondaryButton(
                           label: 'Download Invoice ${order.invoiceId}',
@@ -480,6 +490,83 @@ class _KV extends StatelessWidget {
           Expanded(child: Text(value, style: AppTypography.bodyStrong)),
         ],
       ),
+    );
+  }
+}
+
+/// Shown on a delivered order: the lines this buyer has not reviewed yet.
+/// The list comes from the server, so a product they already reviewed — or one
+/// they are not entitled to review — never appears here.
+class _RateThisOrder extends StatelessWidget {
+  const _RateThisOrder({required this.order});
+
+  final Order order;
+
+  @override
+  Widget build(BuildContext context) {
+    final ReviewsController reviews = AppScope.of(context).reviews;
+    return ListenableBuilder(
+      listenable: reviews,
+      builder: (context, _) {
+        final List<OrderLine> pending = order.lines
+            .where((OrderLine l) => reviews.canReview(l.productId))
+            .toList(growable: false);
+        if (pending.isEmpty) return const SizedBox.shrink();
+
+        return AppCard(
+          color: AppColors.surface,
+          borderColor: AppColors.surface,
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.rate_review_outlined,
+                      size: 18, color: AppColors.text),
+                  const SizedBox(width: AppSpacing.xs),
+                  const Expanded(
+                    child: Text('Rate what you received',
+                        style: AppTypography.bodyStrong),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Your review helps other academies and shops buy with confidence.',
+                style: AppTypography.caption.copyWith(color: AppColors.textSoft),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              for (final OrderLine line in pending)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+                  child: Row(
+                    children: [
+                      ProductImage(source: line.image, size: 40),
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(
+                        child: Text(
+                          line.name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.small,
+                        ),
+                      ),
+                      GhostButton(
+                        label: 'Rate',
+                        onPressed: () => showWriteReviewSheet(
+                          context,
+                          productId: line.productId,
+                          productName: line.name,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

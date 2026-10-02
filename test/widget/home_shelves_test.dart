@@ -89,6 +89,17 @@ void main() {
       '/api/v1/promotions/active': () => {'promotion': null},
       '/api/v1/notifications': () => {'items': <Map<String, dynamic>>[], 'unread': 0},
       '/api/v1/orders': () => <Map<String, dynamic>>[],
+      '/api/v1/reviews/pending': () => <Map<String, dynamic>>[],
+      '/api/v1/catalog/products/bat-1/reviews': () => {
+            'reviews': <Map<String, dynamic>>[],
+            'total': 0, 'average': 0,
+            'breakdown': {'1': 0, '2': 0, '3': 0, '4': 0, '5': 0},
+          },
+      '/api/v1/catalog/products/ball-1/reviews': () => {
+            'reviews': <Map<String, dynamic>>[],
+            'total': 0, 'average': 0,
+            'breakdown': {'1': 0, '2': 0, '3': 0, '4': 0, '5': 0},
+          },
     };
   });
 
@@ -115,6 +126,15 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
+  }
+
+  /// The product page builds its slivers lazily, so anything below the fold
+  /// has to be scrolled to before it exists to find.
+  Future<void> scrollProductPage(WidgetTester tester, Finder target) async {
+    for (int i = 0; i < 8 && target.evaluate().isEmpty; i++) {
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -400));
+      await tester.pumpAndSettle();
+    }
   }
 
   Future<AppServices> pumpSignedIn(WidgetTester tester) async {
@@ -209,6 +229,49 @@ void main() {
     // A later launch on the same device and day stays quiet.
     services.promotions.reset();
     expect(await services.promotions.takePending(), isNull);
+  });
+
+  testWidgets('reviews read from the server, and writing is offered only when '
+      'the server says the buyer may', (tester) async {
+    routes['/api/v1/catalog/products/bat-1/reviews'] = () => {
+          'reviews': [
+            {
+              'id': 'r1', 'productId': 'bat-1', 'rating': 5, 'title': 'Held up all season',
+              'body': 'Our academy has used these for six months.',
+              'photos': <String>[], 'createdAt': '2026-10-01T10:00:00Z',
+              'author': 'ABC Sports', 'verifiedBuyer': true, 'mine': false,
+            }
+          ],
+          'total': 1, 'average': 5.0,
+          'breakdown': {'1': 0, '2': 0, '3': 0, '4': 0, '5': 1},
+        };
+    await pumpSignedIn(tester);
+    await tester.tap(find.text('Willow Bat').first);
+    await tester.pumpAndSettle();
+
+    await scrollProductPage(tester, find.text('Ratings & Reviews'));
+    expect(find.text('Ratings & Reviews'), findsOneWidget);
+    expect(find.text('Held up all season'), findsOneWidget);
+    expect(find.text('Verified buyer'), findsOneWidget);
+    // Nothing in /reviews/pending, so this buyer is not offered the form.
+    expect(find.text('Write a review'), findsNothing);
+  });
+
+  testWidgets('a buyer the server lists as eligible is offered the form',
+      (tester) async {
+    routes['/api/v1/reviews/pending'] = () => [
+          {'productId': 'bat-1', 'name': 'Willow Bat', 'image': ''}
+        ];
+    await pumpSignedIn(tester);
+    await tester.tap(find.text('Willow Bat').first);
+    await tester.pumpAndSettle();
+
+    await scrollProductPage(tester, find.text('Write a review'));
+    expect(find.text('Write a review'), findsOneWidget);
+    await tester.tap(find.text('Write a review'));
+    await tester.pumpAndSettle();
+    expect(find.text('Tap to rate'), findsOneWidget);
+    expect(find.text('Post Review'), findsOneWidget);
   });
 
   testWidgets('the video section shows only for a product that has one',

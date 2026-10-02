@@ -167,6 +167,46 @@ class HttpAuthRepository implements AuthRepository {
   }
 }
 
+class HttpReviewRepository implements ReviewRepository {
+  HttpReviewRepository(this._api);
+
+  final ApiClient _api;
+
+  @override
+  Future<ReviewPage> fetchReviews(String productId,
+      {int offset = 0, int limit = 10}) async {
+    return ReviewPage.fromJson(_map(await _api.get(
+      '/catalog/products/$productId/reviews',
+      query: {'offset': '$offset', 'limit': '$limit'},
+    )));
+  }
+
+  @override
+  Future<List<ReviewableProduct>> fetchReviewable() async =>
+      _list(await _api.get('/reviews/pending'))
+          .map(ReviewableProduct.fromJson)
+          .toList();
+
+  @override
+  Future<ProductReview> submit(
+    String productId, {
+    required int rating,
+    required String title,
+    required String body,
+    List<String> photos = const <String>[],
+  }) async {
+    return ProductReview.fromJson(_map(await _api.put('/reviews/$productId', {
+      'rating': rating,
+      'title': title,
+      'body': body,
+      'photos': photos,
+    })));
+  }
+
+  @override
+  Future<void> remove(String reviewId) => _api.delete('/reviews/$reviewId');
+}
+
 class HttpOrderRepository implements OrderRepository {
   HttpOrderRepository(this._api);
 

@@ -10,6 +10,7 @@ import '../state/catalog_controller.dart';
 import '../state/notifications_controller.dart';
 import '../state/orders_controller.dart';
 import '../state/promotion_controller.dart';
+import '../state/reviews_controller.dart';
 import '../state/quotes_controller.dart';
 import '../state/session_controller.dart';
 import '../state/settings_controller.dart';
@@ -41,6 +42,7 @@ class AppServices {
     required this.settings,
     required this.team,
     required this.promotions,
+    required this.reviews,
     this.api,
   });
 
@@ -68,6 +70,7 @@ class AppServices {
       settings: SettingsController(store),
       team: TeamController(HttpTeamRepository(api)),
       promotions: PromotionController(catalogRepository, store),
+      reviews: ReviewsController(HttpReviewRepository(api)),
     );
     // A 401 means the token is dead server-side: drop the session and let the
     // app fall back to Login.
@@ -103,6 +106,7 @@ class AppServices {
       settings: SettingsController(store),
       team: TeamController(DemoTeamRepository(store, account)),
       promotions: PromotionController(catalogRepository, store),
+      reviews: ReviewsController(DemoReviewRepository(store, account)),
     );
   }
 
@@ -130,6 +134,7 @@ class AppServices {
   final SettingsController settings;
   final TeamController team;
   final PromotionController promotions;
+  final ReviewsController reviews;
 
   /// Restores everything that must be known before the first screen draws.
   Future<void> bootstrap() async {
@@ -157,6 +162,7 @@ class AppServices {
     // A promotion can target registered or unregistered buyers, so the next
     // sign-in must ask again rather than reuse the previous buyer's offer.
     promotions.reset();
+    reviews.reset();
   }
 
   void dispose() {
@@ -169,6 +175,7 @@ class AppServices {
     orders.dispose();
     addresses.dispose();
     promotions.dispose();
+    reviews.dispose();
     notifications.dispose();
     quotes.dispose();
     settings.dispose();

@@ -335,3 +335,116 @@ class Deal {
         stockLeft: (json['stockLeft'] as num?)?.toInt(),
       );
 }
+
+//------------------------------------------------------------------------------
+// Reviews
+//------------------------------------------------------------------------------
+
+/// One buyer's review. The server only ever returns reviews it has proved were
+/// written by someone whose order for that product was delivered, so
+/// [verifiedBuyer] is a fact rather than something the client decided.
+class ProductReview {
+  const ProductReview({
+    required this.id,
+    required this.productId,
+    required this.rating,
+    required this.title,
+    required this.body,
+    required this.photos,
+    required this.createdAt,
+    required this.author,
+    this.verifiedBuyer = true,
+    this.mine = false,
+  });
+
+  final String id;
+  final String productId;
+  final int rating;
+  final String title;
+  final String body;
+  final List<String> photos;
+  final DateTime createdAt;
+
+  /// Business name, or a masked mobile. Never the full number.
+  final String author;
+  final bool verifiedBuyer;
+
+  /// True for the signed-in buyer's own review, so it can be edited.
+  final bool mine;
+
+  factory ProductReview.fromJson(Map<String, dynamic> json) => ProductReview(
+        id: json['id'] as String,
+        productId: json['productId'] as String? ?? '',
+        rating: (json['rating'] as num?)?.toInt() ?? 0,
+        title: json['title'] as String? ?? '',
+        body: json['body'] as String? ?? '',
+        photos: (json['photos'] as List<dynamic>? ?? const <dynamic>[])
+            .map((dynamic e) => e.toString())
+            .toList(growable: false),
+        createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
+        author: json['author'] as String? ?? 'SPOCART buyer',
+        verifiedBuyer: json['verifiedBuyer'] as bool? ?? true,
+        mine: json['mine'] as bool? ?? false,
+      );
+}
+
+/// A page of reviews with the summary the product page shows above them.
+class ReviewPage {
+  const ReviewPage({
+    required this.reviews,
+    required this.total,
+    required this.average,
+    required this.breakdown,
+  });
+
+  final List<ProductReview> reviews;
+  final int total;
+  final double average;
+
+  /// Star → how many reviews gave it, for the distribution bars.
+  final Map<int, int> breakdown;
+
+  bool get isEmpty => total == 0;
+
+  static const ReviewPage empty = ReviewPage(
+    reviews: <ProductReview>[],
+    total: 0,
+    average: 0,
+    breakdown: <int, int>{1: 0, 2: 0, 3: 0, 4: 0, 5: 0},
+  );
+
+  factory ReviewPage.fromJson(Map<String, dynamic> json) {
+    final Map<String, dynamic> raw =
+        Map<String, dynamic>.from(json['breakdown'] as Map? ?? const <String, dynamic>{});
+    return ReviewPage(
+      reviews: (json['reviews'] as List<dynamic>? ?? const <dynamic>[])
+          .map((dynamic e) => ProductReview.fromJson(Map<String, dynamic>.from(e as Map)))
+          .toList(),
+      total: (json['total'] as num?)?.toInt() ?? 0,
+      average: (json['average'] as num?)?.toDouble() ?? 0,
+      breakdown: <int, int>{
+        for (int star = 1; star <= 5; star++)
+          star: (raw['$star'] as num?)?.toInt() ?? 0,
+      },
+    );
+  }
+}
+
+/// A product the buyer has received and can still review.
+class ReviewableProduct {
+  const ReviewableProduct({
+    required this.productId,
+    required this.name,
+    required this.image,
+  });
+
+  final String productId;
+  final String name;
+  final String image;
+
+  factory ReviewableProduct.fromJson(Map<String, dynamic> json) => ReviewableProduct(
+        productId: json['productId'] as String,
+        name: json['name'] as String? ?? '',
+        image: json['image'] as String? ?? '',
+      );
+}

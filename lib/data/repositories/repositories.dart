@@ -64,6 +64,128 @@ abstract class CatalogRepository {
   Future<Promotion?> fetchActivePromotion();
 }
 
+//------------------------------------------------------------------------------
+// Reviews
+//------------------------------------------------------------------------------
+
+abstract class ReviewRepository {
+  /// Approved reviews for a product, newest first, with the star summary.
+  Future<ReviewPage> fetchReviews(String productId, {int offset, int limit});
+
+  /// Products this buyer has received and not yet reviewed.
+  Future<List<ReviewableProduct>> fetchReviewable();
+
+  /// Writes or replaces this buyer's review. The server refuses it unless they
+  /// have a delivered order for that product.
+  Future<ProductReview> submit(
+    String productId, {
+    required int rating,
+    required String title,
+    required String body,
+    List<String> photos,
+  });
+
+  Future<void> remove(String reviewId);
+}
+
+/// Offline there are no other buyers and no delivered orders to prove, so the
+/// demo backend keeps the buyer's own reviews on the device.
+class DemoReviewRepository implements ReviewRepository {
+  DemoReviewRepository(this._store, this._account);
+
+  final LocalStore _store;
+  final AccountKey _account;
+
+  String get _key => _account.scoped('reviews');
+
+  Future<List<ProductReview>> _load() async {
+    final List<Map<String, dynamic>>? raw = await _store.readList(_key);
+    return raw == null
+        ? <ProductReview>[]
+        : raw.map(ProductReview.fromJson).toList();
+  }
+
+  Future<void> _write(List<ProductReview> list) => _store.writeJson(
+        _key,
+        list
+            .map((ProductReview r) => <String, dynamic>{
+                  'id': r.id,
+                  'productId': r.productId,
+                  'rating': r.rating,
+                  'title': r.title,
+                  'body': r.body,
+                  'photos': r.photos,
+                  'createdAt': r.createdAt.toIso8601String(),
+                  'author': r.author,
+                  'verifiedBuyer': r.verifiedBuyer,
+                  'mine': true,
+                })
+            .toList(),
+      );
+
+  @override
+  Future<ReviewPage> fetchReviews(String productId,
+      {int offset = 0, int limit = 10}) async {
+    await _latency(250);
+    final List<ProductReview> mine = (await _load())
+        .where((ProductReview r) => r.productId == productId)
+        .toList();
+    if (mine.isEmpty) return ReviewPage.empty;
+    final Map<int, int> breakdown = <int, int>{1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
+    for (final ProductReview r in mine) {
+      breakdown[r.rating] = (breakdown[r.rating] ?? 0) + 1;
+    }
+    final double average =
+        mine.fold<int>(0, (int t, ProductReview r) => t + r.rating) / mine.length;
+    return ReviewPage(
+      reviews: mine,
+      total: mine.length,
+      average: double.parse(average.toStringAsFixed(1)),
+      breakdown: breakdown,
+    );
+  }
+
+  @override
+  Future<List<ReviewableProduct>> fetchReviewable() async {
+    await _latency(200);
+    return const <ReviewableProduct>[];
+  }
+
+  @override
+  Future<ProductReview> submit(
+    String productId, {
+    required int rating,
+    required String title,
+    required String body,
+    List<String> photos = const <String>[],
+  }) async {
+    await _latency(350);
+    final List<ProductReview> all = await _load();
+    all.removeWhere((ProductReview r) => r.productId == productId);
+    final ProductReview review = ProductReview(
+      id: Ids.local(),
+      productId: productId,
+      rating: rating,
+      title: title,
+      body: body,
+      photos: photos,
+      createdAt: DateTime.now(),
+      author: 'You',
+      mine: true,
+    );
+    all.insert(0, review);
+    await _write(all);
+    return review;
+  }
+
+  @override
+  Future<void> remove(String reviewId) async {
+    final List<ProductReview> all = await _load();
+    all.removeWhere((ProductReview r) => r.id == reviewId);
+    await _write(all);
+  }
+}
+
 class DemoCatalogRepository implements CatalogRepository {
   const DemoCatalogRepository();
 
