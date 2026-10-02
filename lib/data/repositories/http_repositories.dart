@@ -171,6 +171,24 @@ class HttpAuthRepository implements AuthRepository {
   }
 }
 
+class HttpAnalyticsRepository implements AnalyticsRepository {
+  HttpAnalyticsRepository(this._api);
+
+  final ApiClient _api;
+
+  @override
+  Future<void> report({
+    required String deviceId,
+    required String platform,
+    required List<Map<String, dynamic>> events,
+  }) =>
+      _api.post('/events', <String, dynamic>{
+        'deviceId': deviceId,
+        'platform': platform,
+        'events': events,
+      });
+}
+
 class HttpRewardRepository implements RewardRepository {
   HttpRewardRepository(this._api);
 

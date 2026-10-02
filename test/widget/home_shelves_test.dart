@@ -93,6 +93,7 @@ void main() {
       '/api/v1/reviews/pending': () => <Map<String, dynamic>>[],
       '/api/v1/rewards': () => {'active': false, 'settings': <String, dynamic>{}},
       '/api/v1/rewards/ledger': () => {'entries': <Map<String, dynamic>>[], 'total': 0, 'balance': 0},
+      '/api/v1/events': () => {'stored': 0},
       '/api/v1/catalog/products/bat-1/reviews': () => {
             'reviews': <Map<String, dynamic>>[],
             'total': 0, 'average': 0,

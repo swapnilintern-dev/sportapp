@@ -12,6 +12,7 @@ import '../../core/widgets/media.dart';
 import '../../data/models/catalog.dart';
 import '../../data/models/engagement.dart';
 import '../../state/reviews_controller.dart';
+import '../../state/analytics_controller.dart';
 import '../../state/cart_controller.dart';
 import '../support/help_sheet.dart';
 import 'image_viewer_screen.dart';
@@ -56,6 +57,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       final AppServices services = AppScope.of(context);
       services.reviews.load(product.id);
       services.reviews.loadReviewable();
+      services.analytics.log(AppEvent.productView, productId: product.id);
     });
   }
 

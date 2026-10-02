@@ -11,6 +11,7 @@ import '../../../core/widgets/layout.dart';
 import '../../../core/widgets/media.dart';
 import '../../../core/widgets/state_views.dart';
 import '../../../data/models/catalog.dart';
+import '../../../state/analytics_controller.dart';
 import '../../../state/cart_controller.dart';
 import 'size_picker.dart';
 
@@ -46,9 +47,12 @@ Future<void> addProductToCart(
     if (chosen == null || !context.mounted) return;
   }
 
-  final CartController cart = AppScope.of(context).cart;
+  final AppServices services = AppScope.of(context);
+  final CartController cart = services.cart;
   final bool fresh = cart.lineFor(product.id, size: chosen) == null;
   final int qty = cart.add(product, size: chosen);
+  services.analytics
+      .log(AppEvent.addToCart, productId: product.id, quantity: qty);
   final String sizeNote = chosen == null ? '' : ' (size $chosen)';
   showCartSnack(
     context,

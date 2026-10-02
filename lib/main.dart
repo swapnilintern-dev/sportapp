@@ -40,20 +40,33 @@ class SpocartApp extends StatefulWidget {
   State<SpocartApp> createState() => _SpocartAppState();
 }
 
-class _SpocartAppState extends State<SpocartApp> {
+class _SpocartAppState extends State<SpocartApp> with WidgetsBindingObserver {
   final GlobalKey<NavigatorState> _navigator = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     widget.services.sessionExpired.addListener(_onSessionExpired);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     widget.services.sessionExpired.removeListener(_onSessionExpired);
     widget.services.dispose();
     super.dispose();
+  }
+
+  /// Send whatever analytics are queued before the app is backgrounded: a
+  /// session that ends on the home button should still be counted.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached ||
+        state == AppLifecycleState.hidden) {
+      widget.services.analytics.flush();
+    }
   }
 
   /// The server rejected the token: return to Login with an explanation.

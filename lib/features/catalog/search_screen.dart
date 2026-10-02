@@ -8,6 +8,7 @@ import '../../core/widgets/inputs.dart';
 import '../../core/widgets/layout.dart';
 import '../../core/widgets/state_views.dart';
 import '../../data/models/catalog.dart';
+import '../../state/analytics_controller.dart';
 import '../../state/catalog_controller.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/feedback.dart';
@@ -102,6 +103,7 @@ class _SearchScreenState extends State<SearchScreen> {
             final String q = _query.text.trim();
             if (q.isEmpty) return _Suggestions(onPick: _apply, catalog: catalog);
             final List<Product> results = catalog.search(q);
+            _reportSearch(q, results.length);
             if (results.isEmpty) {
               return EmptyStateView(
                 icon: Icons.search_off_rounded,
@@ -150,6 +152,21 @@ class _SearchScreenState extends State<SearchScreen> {
         ),
       ),
     );
+  }
+
+  String _reportedQuery = '';
+
+  /// Reports that a search happened, with how many products it found and how
+  /// long the query was — never the query itself. Debounced on the text so a
+  /// buyer typing one word is one event, not eight.
+  void _reportSearch(String query, int results) {
+    if (query == _reportedQuery) return;
+    _reportedQuery = query;
+    AppScope.of(context).analytics.log(
+          AppEvent.search,
+          results: results,
+          queryLength: query.length,
+        );
   }
 
   /// Dictation goes into the ordinary search; nothing bypasses it.

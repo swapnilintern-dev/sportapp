@@ -14,6 +14,7 @@ import '../../data/models/catalog.dart';
 import '../../data/models/order.dart';
 import '../../data/repositories/repositories.dart';
 import '../../state/address_controller.dart';
+import '../../state/analytics_controller.dart';
 import '../../state/cart_controller.dart';
 
 //==============================================================================
@@ -86,6 +87,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Future<void> _continue() async {
     if (_placing) return;
     final AppServices services = AppScope.of(context);
+    services.analytics.log(AppEvent.checkoutStart);
     final CartController cart = services.cart;
 
     if (cart.isEmpty) {
@@ -167,6 +169,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         paymentMethod: _payment,
       );
       if (!mounted) return;
+      services.analytics
+          .log(AppEvent.orderPlaced, orderId: result.order.id);
       if (result.checkout == null) {
         // Pay Later (or demo): the order is placed; nothing left to pay now.
         services.cart.clear();

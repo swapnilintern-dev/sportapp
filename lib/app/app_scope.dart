@@ -11,6 +11,7 @@ import '../state/notifications_controller.dart';
 import '../state/orders_controller.dart';
 import '../state/promotion_controller.dart';
 import '../state/reviews_controller.dart';
+import '../state/analytics_controller.dart';
 import '../state/rewards_controller.dart';
 import '../state/quotes_controller.dart';
 import '../state/session_controller.dart';
@@ -45,6 +46,7 @@ class AppServices {
     required this.promotions,
     required this.reviews,
     required this.rewards,
+    required this.analytics,
     this.api,
   });
 
@@ -74,6 +76,7 @@ class AppServices {
       promotions: PromotionController(catalogRepository, store),
       reviews: ReviewsController(HttpReviewRepository(api)),
       rewards: RewardsController(HttpRewardRepository(api)),
+      analytics: AnalyticsController(HttpAnalyticsRepository(api), store),
     );
     // A 401 means the token is dead server-side: drop the session and let the
     // app fall back to Login.
@@ -111,6 +114,9 @@ class AppServices {
       promotions: PromotionController(catalogRepository, store),
       reviews: ReviewsController(DemoReviewRepository(store, account)),
       rewards: RewardsController(const DemoRewardRepository()),
+      // Nothing to report to offline.
+      analytics: AnalyticsController(const DemoAnalyticsRepository(), store)
+        ..enabled = false,
     );
   }
 
@@ -140,6 +146,7 @@ class AppServices {
   final PromotionController promotions;
   final ReviewsController reviews;
   final RewardsController rewards;
+  final AnalyticsController analytics;
 
   /// Restores everything that must be known before the first screen draws.
   Future<void> bootstrap() async {
@@ -183,6 +190,7 @@ class AppServices {
     promotions.dispose();
     reviews.dispose();
     rewards.dispose();
+    analytics.dispose();
     notifications.dispose();
     quotes.dispose();
     settings.dispose();

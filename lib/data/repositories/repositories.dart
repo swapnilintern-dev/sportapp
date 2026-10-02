@@ -69,6 +69,32 @@ abstract class CatalogRepository {
 }
 
 //------------------------------------------------------------------------------
+// Analytics
+//------------------------------------------------------------------------------
+
+abstract class AnalyticsRepository {
+  /// Reports a batch of counts. Throws on failure so the caller can keep them
+  /// for the next attempt; a lost batch costs a count, never an order.
+  Future<void> report({
+    required String deviceId,
+    required String platform,
+    required List<Map<String, dynamic>> events,
+  });
+}
+
+/// The demo backend has nowhere to report to, so it quietly does nothing.
+class DemoAnalyticsRepository implements AnalyticsRepository {
+  const DemoAnalyticsRepository();
+
+  @override
+  Future<void> report({
+    required String deviceId,
+    required String platform,
+    required List<Map<String, dynamic>> events,
+  }) async {}
+}
+
+//------------------------------------------------------------------------------
 // Rewards
 //------------------------------------------------------------------------------
 

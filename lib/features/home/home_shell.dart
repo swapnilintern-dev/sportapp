@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../app/app_scope.dart';
+import '../../state/analytics_controller.dart';
 import '../../core/theme/app_tokens.dart';
 import '../account/account_tab.dart';
 import '../cart/cart_screen.dart';
@@ -39,6 +40,7 @@ class _HomeShellState extends State<HomeShell> {
     // Asked once per launch so the Account menu knows whether the rewards
     // programme is running; it hides the entry until the business turns it on.
     services.rewards.load();
+    services.analytics.log(AppEvent.appOpen);
     // The offer waits a few seconds so it never lands on a buyer mid-tap, and
     // the controller hands it over at most once per launch.
     WidgetsBinding.instance.addPostFrameCallback((_) {
