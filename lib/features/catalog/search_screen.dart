@@ -45,16 +45,6 @@ class _SearchScreenState extends State<SearchScreen> {
   AssistResult? _assist;
   String _assistedQuery = '';
 
-  static const List<String> _suggestions = <String>[
-    'Cricket bat',
-    'Football',
-    'Badminton racket',
-    'Jersey',
-    'Dumbbell',
-    'Shuttlecock',
-    'Helmet',
-  ];
-
   @override
   void dispose() {
     _query.dispose();
@@ -268,13 +258,17 @@ class _Suggestions extends StatelessWidget {
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.all(AppSpacing.page),
         children: [
-          const Text('Popular searches', style: AppTypography.overline),
-          const SizedBox(height: AppSpacing.sm),
+          if (catalog.popularSearches().isNotEmpty) ...[
+            const Text('Popular searches', style: AppTypography.overline),
+            const SizedBox(height: AppSpacing.sm),
+          ],
           Wrap(
             spacing: AppSpacing.xs,
             runSpacing: AppSpacing.xs,
             children: [
-              for (final String s in _SearchScreenState._suggestions)
+              // Drawn from what is actually selling and what the catalogue
+              // stocks, never a hand-written list of product names.
+              for (final String s in catalog.popularSearches())
                 FilterChipPill(
                   label: s,
                   selected: false,

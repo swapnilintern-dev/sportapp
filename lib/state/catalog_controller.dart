@@ -140,6 +140,24 @@ class CatalogController extends ChangeNotifier {
   Future<Product> productByBarcode(String code) =>
       _repository.productByBarcode(code);
 
+  /// Terms to offer before anything is typed: the real best sellers first,
+  /// then sub-categories the catalogue actually has. Nothing is hand-written,
+  /// so these can never name a product the shop does not sell.
+  List<String> popularSearches({int limit = 7}) {
+    final List<String> terms = <String>[];
+    for (final Product p in bestSellers) {
+      if (terms.length >= limit) break;
+      if (!terms.contains(p.name)) terms.add(p.name);
+    }
+    for (final ProductCategory c in _categories) {
+      for (final String sub in c.subcategories) {
+        if (terms.length >= limit) break;
+        if (!terms.contains(sub)) terms.add(sub);
+      }
+    }
+    return terms;
+  }
+
   /// Plain-language product help, answered by the server.
   Future<AssistResult> assist(String query) => _repository.assist(query);
 

@@ -20,12 +20,6 @@ abstract final class SupportContacts {
   static const String hours = 'Mon–Sat, 10:00 am – 7:00 pm IST';
 }
 
-/// Collection details shown on the UPI payment screen.
-abstract final class PaymentDetails {
-  static const String upiId = 'spocart@okaxis';
-  static const String payeeName = 'SPOCART';
-}
-
 /// Business rules.
 abstract final class BusinessRules {
   static const double gstRate = 0.18;
