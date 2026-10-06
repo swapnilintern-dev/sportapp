@@ -41,6 +41,9 @@ class _SearchScreenState extends State<SearchScreen> {
       TextEditingController(text: widget.initialQuery ?? '');
 
   bool _scanning = false;
+  bool _assisting = false;
+  AssistResult? _assist;
+  String _assistedQuery = '';
 
   static const List<String> _suggestions = <String>[
     'Cricket bat',
@@ -69,7 +72,7 @@ class _SearchScreenState extends State<SearchScreen> {
           child: AppSearchBar(
             controller: _query,
             autofocus: true,
-            onChanged: (_) => setState(() {}),
+            onChanged: (_) => setState(() => _assist = null),
             onClear: () => setState(_query.clear),
           ),
         ),
@@ -102,6 +105,14 @@ class _SearchScreenState extends State<SearchScreen> {
             }
             final String q = _query.text.trim();
             if (q.isEmpty) return _Suggestions(onPick: _apply, catalog: catalog);
+            if (_assisting) return const AppLoader();
+            if (_assist != null) {
+              return _AssistResults(
+                result: _assist!,
+                query: _assistedQuery,
+                onClear: () => setState(() => _assist = null),
+              );
+            }
             final List<Product> results = catalog.search(q);
             _reportSearch(q, results.length);
             if (results.isEmpty) {
@@ -110,8 +121,10 @@ class _SearchScreenState extends State<SearchScreen> {
                 title: 'No results for "$q"',
                 message:
                     'Check the spelling or try a broader term like "ball" or "racket".',
-                actionLabel: 'Browse Categories',
-                onAction: () => AppNavigator.backToHome(
+                actionLabel: 'Ask SPOCART',
+                onAction: () => _ask(q),
+                secondaryActionLabel: 'Browse Categories',
+                onSecondaryAction: () => AppNavigator.backToHome(
                   context,
                   tab: HomeTab.categories,
                 ),
@@ -122,7 +135,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 keyboardDismissBehavior:
                     ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: const EdgeInsets.all(AppSpacing.page),
-                itemCount: results.length + 1,
+                itemCount: results.length + 2,
                 separatorBuilder: (_, _) =>
                     const SizedBox(height: AppSpacing.sm),
                 itemBuilder: (context, i) {
@@ -144,6 +157,12 @@ class _SearchScreenState extends State<SearchScreen> {
                       ],
                     );
                   }
+                  if (i == results.length + 1) {
+                    return _AskSpocartTile(
+                      query: q,
+                      onAsk: () => _ask(q),
+                    );
+                  }
                   return ProductRow(product: results[i - 1]);
                 },
               ),
@@ -152,6 +171,32 @@ class _SearchScreenState extends State<SearchScreen> {
         ),
       ),
     );
+  }
+
+  /// Describes what is needed in plain words and lets the server suggest. The
+  /// products that come back are always real catalogue entries — the server
+  /// drops anything its assistant invents — so this screen just shows them.
+  Future<void> _ask(String query) async {
+    if (_assisting) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() {
+      _assisting = true;
+      _assistedQuery = query;
+    });
+    try {
+      final AssistResult result =
+          await AppScope.of(context).catalog.assist(query);
+      if (mounted) setState(() => _assist = result);
+    } on AppException catch (e) {
+      if (mounted) showAppSnackBar(context, e.message, tone: SnackTone.error);
+    } catch (_) {
+      if (mounted) {
+        showAppSnackBar(context, 'Could not ask right now. Please try again.',
+            tone: SnackTone.error);
+      }
+    } finally {
+      if (mounted) setState(() => _assisting = false);
+    }
   }
 
   String _reportedQuery = '';
@@ -258,6 +303,120 @@ class _Suggestions extends StatelessWidget {
               onTap: () => AppNavigator.toCategory(context, c),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// Offered under the results: plain matching found some products, but a buyer
+/// describing a whole requirement may want a suggested set instead.
+class _AskSpocartTile extends StatelessWidget {
+  const _AskSpocartTile({required this.query, required this.onAsk});
+
+  final String query;
+  final VoidCallback onAsk;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.sm),
+      child: AppCard(
+        color: AppColors.surface,
+        borderColor: AppColors.surface,
+        padding: const EdgeInsets.all(AppSpacing.md),
+        onTap: onAsk,
+        child: Row(
+          children: <Widget>[
+            const Icon(Icons.auto_awesome_outlined, color: AppColors.red),
+            const SizedBox(width: AppSpacing.sm),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text('Not quite it?', style: AppTypography.bodyStrong),
+                  Text(
+                    'Describe what you need and we will suggest a set.',
+                    style: AppTypography.caption,
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// What the server suggested. Every product here is a real catalogue entry; the
+/// server drops anything its assistant invents, so this screen only displays.
+class _AssistResults extends StatelessWidget {
+  const _AssistResults({
+    required this.result,
+    required this.query,
+    required this.onClear,
+  });
+
+  final AssistResult result;
+  final String query;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    if (result.products.isEmpty) {
+      return EmptyStateView(
+        icon: Icons.inventory_2_outlined,
+        title: 'Nothing matched that',
+        message: result.answer.isNotEmpty
+            ? result.answer
+            : 'Tell us what you need and we will source it for you.',
+        actionLabel: 'Request a Quote',
+        onAction: () => AppNavigator.toCustomOrder(context),
+        secondaryActionLabel: 'Back to search',
+        onSecondaryAction: onClear,
+      );
+    }
+
+    return ContentWidth(
+      child: ListView.separated(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: const EdgeInsets.all(AppSpacing.page),
+        itemCount: result.products.length + 1,
+        separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
+        itemBuilder: (context, i) {
+          if (i == 0) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: Text(
+                        'Suggested for "$query"',
+                        style: AppTypography.bodyStrong,
+                      ),
+                    ),
+                    GhostButton(label: 'Clear', onPressed: onClear),
+                  ],
+                ),
+                if (result.answer.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(result.answer, style: AppTypography.small),
+                ],
+                // Said plainly, so nobody mistakes a suggestion for a quote.
+                const SizedBox(height: 2),
+                Text(
+                  result.fromAssistant
+                      ? 'Suggestions from SPOCART. Prices and stock are always ours.'
+                      : 'Closest products in the catalogue.',
+                  style: AppTypography.caption.copyWith(color: AppColors.textSoft),
+                ),
+              ],
+            );
+          }
+          return ProductRow(product: result.products[i - 1]);
+        },
       ),
     );
   }

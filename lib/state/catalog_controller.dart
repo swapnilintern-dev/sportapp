@@ -140,6 +140,9 @@ class CatalogController extends ChangeNotifier {
   Future<Product> productByBarcode(String code) =>
       _repository.productByBarcode(code);
 
+  /// Plain-language product help, answered by the server.
+  Future<AssistResult> assist(String query) => _repository.assist(query);
+
   /// Products a buyer might also want, excluding [product] itself.
   List<Product> related(Product product, {int limit = 6}) => _products
       .where((p) => p.categoryId == product.categoryId && p.id != product.id)

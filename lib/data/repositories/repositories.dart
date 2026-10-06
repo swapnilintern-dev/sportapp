@@ -2,6 +2,7 @@ import 'dart:math';
 
 import '../local/local_store.dart';
 import '../models/account.dart';
+import '../../core/search/product_search.dart';
 import '../models/catalog.dart';
 import '../models/engagement.dart';
 import '../models/order.dart';
@@ -66,6 +67,38 @@ abstract class CatalogRepository {
   /// The product carrying a scanned barcode. Throws an [AppException] when no
   /// product has that code — the app says so rather than guessing at one.
   Future<Product> productByBarcode(String code);
+
+  /// Plain-language product help. The server answers from the assistant when
+  /// the business has switched it on, and from the ordinary search otherwise —
+  /// [AssistResult.fromAssistant] says which.
+  Future<AssistResult> assist(String query);
+}
+
+/// What the server suggested, and where it came from. The products are always
+/// real catalogue entries: the server drops anything the assistant invents.
+class AssistResult {
+  const AssistResult({
+    required this.products,
+    required this.answer,
+    required this.fromAssistant,
+  });
+
+  final List<Product> products;
+
+  /// A sentence or two from the assistant. Empty when the plain search answered.
+  final String answer;
+  final bool fromAssistant;
+
+  static const AssistResult empty =
+      AssistResult(products: <Product>[], answer: '', fromAssistant: false);
+
+  factory AssistResult.fromJson(Map<String, dynamic> json) => AssistResult(
+        products: (json['products'] as List<dynamic>? ?? const <dynamic>[])
+            .map((dynamic e) => Product.fromJson(Map<String, dynamic>.from(e as Map)))
+            .toList(),
+        answer: json['answer'] as String? ?? '',
+        fromAssistant: json['source'] == 'ai',
+      );
 }
 
 //------------------------------------------------------------------------------
@@ -306,6 +339,20 @@ class DemoCatalogRepository implements CatalogRepository {
   Future<Product> productByBarcode(String code) async {
     await _latency(300);
     throw const AppException('No SPOCART product carries that barcode.');
+  }
+
+  /// Offline there is no assistant, so the on-device search answers.
+  @override
+  Future<AssistResult> assist(String query) async {
+    await _latency(250);
+    return AssistResult(
+      products: searchProducts(kDemoProducts, query)
+          .take(8)
+          .map((SearchHit h) => h.product)
+          .toList(),
+      answer: '',
+      fromAssistant: false,
+    );
   }
 }
 

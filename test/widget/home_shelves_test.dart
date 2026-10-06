@@ -94,6 +94,10 @@ void main() {
       '/api/v1/rewards': () => {'active': false, 'settings': <String, dynamic>{}},
       '/api/v1/rewards/ledger': () => {'entries': <Map<String, dynamic>>[], 'total': 0, 'balance': 0},
       '/api/v1/events': () => {'stored': 0},
+      '/api/v1/catalog/assist': () => {
+            'products': <Map<String, dynamic>>[],
+            'answer': '', 'source': 'search',
+          },
       '/api/v1/catalog/products/bat-1/reviews': () => {
             'reviews': <Map<String, dynamic>>[],
             'total': 0, 'average': 0,
@@ -299,6 +303,43 @@ void main() {
     await tester.enterText(find.byType(TextField).first, 'willow');
     await tester.pumpAndSettle();
     expect(find.textContaining('showing the closest products'), findsNothing);
+  });
+
+  testWidgets('asking in plain words shows real products, labelled as suggestions',
+      (tester) async {
+    routes['/api/v1/catalog/assist'] = () => {
+          'products': [
+            {
+              ..._product('bat-1', 'Willow Bat', price: 1800),
+              'fromPrice': 1800,
+            }
+          ],
+          'answer': 'For a junior academy, start with bats and a few balls.',
+          'source': 'ai',
+        };
+    await pumpSignedIn(tester);
+    await tester.tap(find.byType(AppSearchBar).first);
+    await tester.pumpAndSettle();
+
+    // A query that matches nothing offers the assistant as the way forward.
+    await tester.enterText(find.byType(TextField).first, 'zzzqqq');
+    await tester.pumpAndSettle();
+    expect(find.text('Ask SPOCART'), findsOneWidget);
+
+    await tester.tap(find.text('Ask SPOCART'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Suggested for'), findsOneWidget);
+    expect(find.text('For a junior academy, start with bats and a few balls.'),
+        findsOneWidget);
+    // Said plainly, so a suggestion is never mistaken for a quote.
+    expect(find.textContaining('Prices and stock are always ours'), findsOneWidget);
+    expect(find.text('Willow Bat'), findsWidgets);
+
+    // Typing again drops the suggestion rather than leaving a stale answer.
+    await tester.enterText(find.byType(TextField).first, 'willow');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Suggested for'), findsNothing);
   });
 
   testWidgets('Rewards stays hidden until the business switches it on',

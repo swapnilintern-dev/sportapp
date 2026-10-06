@@ -41,6 +41,10 @@ class _FakeCatalogRepository implements CatalogRepository {
   @override
   Future<Product> productByBarcode(String code) async =>
       throw const AppException('No SPOCART product carries that barcode.');
+
+  // Not what these tests are about.
+  @override
+  Future<AssistResult> assist(String query) async => AssistResult.empty;
 }
 
 Promotion _promotion({
