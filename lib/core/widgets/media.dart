@@ -137,6 +137,20 @@ class RatingStars extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // No reviews means no stars. Five hollow stars and "0.0 (0 reviews)" reads
+    // like a bad product rather than a new one, and a rating with nothing
+    // behind it is the kind of number this app does not show.
+    if (reviewCount != null && reviewCount == 0) {
+      return Text(
+        'No reviews yet',
+        style: TextStyle(
+          fontSize: size * 0.86,
+          fontWeight: FontWeight.w600,
+          color: AppColors.textMuted,
+        ),
+      );
+    }
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -154,7 +168,8 @@ class RatingStars extends StatelessWidget {
         Text(
           reviewCount == null
               ? rating.toStringAsFixed(1)
-              : '${rating.toStringAsFixed(1)} ($reviewCount reviews)',
+              : '${rating.toStringAsFixed(1)} '
+                  '($reviewCount review${reviewCount == 1 ? '' : 's'})',
           style: TextStyle(
             fontSize: size * 0.86,
             fontWeight: FontWeight.w600,
