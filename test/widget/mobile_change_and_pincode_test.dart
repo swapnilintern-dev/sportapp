@@ -33,8 +33,7 @@ void main() {
     await tester.enterText(find.byType(TextFormField), '9876543210');
     await tester.tap(find.text('Send OTP'));
     await tester.pumpAndSettle(const Duration(milliseconds: 800));
-    await tester.enterText(
-        find.byType(TextField).first, services.session.challenge!.demoCode!);
+    // One tap: the code the demo backend returned fills itself and verifies.
     await tester.pumpAndSettle(const Duration(milliseconds: 900));
     expect(find.text('Best Sellers'), findsOneWidget);
   }
