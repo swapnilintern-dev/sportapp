@@ -156,8 +156,8 @@ void main() {
 
     await tester.enterText(find.byType(TextFormField), '9876543210');
     await tester.tap(find.text('Send OTP'));
-    await tester.pumpAndSettle(const Duration(milliseconds: 600));
-    await tester.enterText(find.byType(TextField).first, '123456');
+    // The fake API hands back devCode '123456', so the boxes fill themselves
+    // and OtpInput verifies — signing in is one tap.
     await tester.pumpAndSettle(const Duration(milliseconds: 900));
     return services;
   }

@@ -46,6 +46,22 @@ class _OtpScreenState extends State<OtpScreen> {
   void initState() {
     super.initState();
     _startCooldown();
+    _fillCodeIfGiven();
+  }
+
+  /// When no SMS can be delivered the server hands the code back, and the app
+  /// shows it on screen. Typing out a number the phone already has is busywork,
+  /// so fill the boxes — OtpInput verifies as soon as six digits are in, which
+  /// makes signing in a single tap on Send OTP.
+  ///
+  /// A server that really sends an SMS never returns a code, so there is
+  /// nothing to fill and the buyer types it as normal.
+  void _fillCodeIfGiven() {
+    final String? given = _session.challenge?.demoCode;
+    if (given == null || given.length != BusinessRules.otpLength) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _code.text.isEmpty) _code.text = given;
+    });
   }
 
   @override
@@ -124,6 +140,8 @@ class _OtpScreenState extends State<OtpScreen> {
     try {
       await _session.sendOtp(mobile);
       if (!mounted) return;
+      _code.clear();
+      _fillCodeIfGiven();
       _startCooldown();
       showAppSnackBar(context, 'A new OTP has been sent.',
           tone: SnackTone.success);

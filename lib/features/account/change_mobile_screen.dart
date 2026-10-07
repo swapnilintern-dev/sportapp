@@ -78,6 +78,14 @@ class _ChangeMobileScreenState extends State<ChangeMobileScreen> {
       await _session.requestMobileChange(_mobile.text.trim());
       if (!mounted) return;
       _code.clear();
+      // The server hands the code back when it cannot send an SMS; fill it in
+      // rather than making the buyer copy it off the screen above.
+      final String? given = _session.mobileChangeChallenge?.demoCode;
+      if (given != null && given.length == 6) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _code.text = given;
+        });
+      }
       _startCooldown();
       setState(() => _codeWrong = false);
       showAppSnackBar(
