@@ -110,6 +110,17 @@ class _RazorpayCheckoutScreenState extends State<RazorpayCheckoutScreen> {
     } on AppException catch (e) {
       // The money may already be with Razorpay; the server reconciles it.
       if (mounted) setState(() => _error = e.message);
+    } catch (_) {
+      // Anything else — a bad response, a parsing failure — must still say
+      // something. Razorpay has taken the money by this point, so silence is
+      // the worst possible outcome; the server's reconciler settles it either
+      // way, and the order is already saved.
+      if (mounted) {
+        setState(() => _error =
+            'Your payment went through, but we could not confirm it just now. '
+            'It will be matched to your order automatically — check My Orders '
+            'in a few minutes.');
+      }
     } finally {
       if (mounted) setState(() => _confirming = false);
     }
