@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:http/http.dart' as http;
 
 import '../../data/repositories/repositories.dart' show AppException;
@@ -69,11 +70,13 @@ class ApiClient {
     try {
       response = await request().timeout(ApiConfig.timeout);
     } on SocketException {
-      throw const AppException('No internet connection. Please check your network and try again.');
+      throw AppException(_unreachable(
+          'No internet connection. Please check your network and try again.'));
     } on TimeoutException {
-      throw const AppException('The server is taking too long to respond. Please try again.');
+      throw const AppException(
+          'The server is taking too long to respond. Please try again.');
     } on http.ClientException {
-      throw const AppException('Could not reach SPOCART. Please try again.');
+      throw AppException(_unreachable('Could not reach SPOCART. Please try again.'));
     }
 
     Map<String, dynamic>? body;
@@ -96,6 +99,12 @@ class ApiClient {
     }
     return body['data'];
   }
+
+  /// In a debug build, say which address could not be reached. "Could not
+  /// reach SPOCART" is all a buyer needs, but it leaves a developer guessing
+  /// between a stopped server, the wrong port and a blocked origin.
+  String _unreachable(String message) =>
+      kDebugMode ? '$message\n($_baseUrl)' : message;
 
   void close() => _client.close();
 }

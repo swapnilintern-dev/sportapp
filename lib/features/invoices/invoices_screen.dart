@@ -6,9 +6,11 @@ import '../../core/theme/app_tokens.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/buttons.dart';
+import '../../core/widgets/feedback.dart';
 import '../../core/widgets/layout.dart';
 import '../../core/widgets/state_views.dart';
 import '../../data/models/order.dart';
+import '../../data/repositories/repositories.dart';
 import '../../state/orders_controller.dart';
 import 'invoice_pdf.dart';
 
@@ -28,6 +30,7 @@ class InvoicesScreen extends StatefulWidget {
 
 class _InvoicesScreenState extends State<InvoicesScreen> {
   String? _busyInvoiceId;
+  String? _payingInvoiceId;
 
   @override
   void initState() {
@@ -42,6 +45,37 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
       await shareInvoicePdf(context, order);
     } finally {
       if (mounted) setState(() => _busyInvoiceId = null);
+    }
+  }
+
+  /// Settles an unpaid Pay Later invoice online. The server opens a fresh
+  /// Razorpay session against the same order, so the order is paid for here
+  /// exactly as it would have been at checkout.
+  Future<void> _payInvoice(Order order) async {
+    if (_payingInvoiceId != null) return;
+    setState(() => _payingInvoiceId = order.invoiceId);
+    try {
+      final CheckoutSession checkout =
+          await AppScope.of(context).orders.payInvoice(order.invoiceId);
+      if (!mounted) return;
+      AppNavigator.toRazorpayCheckout(
+        context,
+        order: order,
+        checkout: checkout,
+        replace: false,
+      );
+    } on AppException catch (e) {
+      if (mounted) showAppSnackBar(context, e.message, tone: SnackTone.error);
+    } catch (_) {
+      if (mounted) {
+        showAppSnackBar(
+          context,
+          'Could not start the payment. Please try again.',
+          tone: SnackTone.error,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _payingInvoiceId = null);
     }
   }
 
@@ -87,57 +121,76 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                     padding: const EdgeInsets.symmetric(
                         horizontal: AppSpacing.sm, vertical: 10),
                     onTap: () => AppNavigator.toOrderDetails(context, o.id),
-                    child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: AppColors.surface,
-                            borderRadius: AppRadius.smAll,
-                          ),
-                          child: const Icon(Icons.description_outlined,
-                              size: 20, color: AppColors.black),
-                        ),
-                        const SizedBox(width: AppSpacing.sm),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('#${o.invoiceId}',
-                                  style: AppTypography.title),
-                              Text(
-                                '${formatDate(o.placedAt)} · Order ${o.id}',
-                                style: AppTypography.caption,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: AppSpacing.xs),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
+                        Row(
                           children: [
-                            Text(formatInr(o.total),
-                                style: AppTypography.bodyStrong),
-                            StatusPill(
-                              label: o.paid ? 'Paid' : 'Due',
-                              color: o.paid ? AppColors.success : AppColors.warning,
-                              dense: true,
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: AppColors.surface,
+                                borderRadius: AppRadius.smAll,
+                              ),
+                              child: const Icon(Icons.description_outlined,
+                                  size: 20, color: AppColors.black),
+                            ),
+                            const SizedBox(width: AppSpacing.sm),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('#${o.invoiceId}',
+                                      style: AppTypography.title),
+                                  Text(
+                                    '${formatDate(o.placedAt)} · Order ${o.id}',
+                                    style: AppTypography.caption,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: AppSpacing.xs),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(formatInr(o.total),
+                                    style: AppTypography.bodyStrong),
+                                StatusPill(
+                                  label: o.paid ? 'Paid' : 'Due',
+                                  color: o.paid
+                                      ? AppColors.success
+                                      : AppColors.warning,
+                                  dense: true,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(width: AppSpacing.xs),
+                            SizedBox(
+                              width: 92,
+                              child: PrimaryButton(
+                                label: 'Download',
+                                size: ButtonSize.small,
+                                loading: busy,
+                                onPressed: () => _download(o),
+                              ),
                             ),
                           ],
                         ),
-                        const SizedBox(width: AppSpacing.xs),
-                        SizedBox(
-                          width: 92,
-                          child: PrimaryButton(
-                            label: 'Download',
+                        // Pay Later invoices can be settled online. It sits
+                        // below the row rather than in it — four controls on
+                        // one line does not fit a phone.
+                        if (!o.paid) ...[
+                          const SizedBox(height: AppSpacing.xs),
+                          PrimaryButton(
+                            label: 'Pay ${formatInr(o.total)}',
                             size: ButtonSize.small,
-                            loading: busy,
-                            onPressed: () => _download(o),
+                            loading: _payingInvoiceId == o.invoiceId,
+                            onPressed: () => _payInvoice(o),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                   );

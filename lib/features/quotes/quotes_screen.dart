@@ -9,7 +9,10 @@ import '../../core/widgets/buttons.dart';
 import '../../core/widgets/feedback.dart';
 import '../../core/widgets/layout.dart';
 import '../../core/widgets/state_views.dart';
+import '../../data/models/account.dart';
 import '../../data/models/engagement.dart';
+import '../../data/models/order.dart';
+import '../../data/repositories/repositories.dart';
 import '../../state/quotes_controller.dart';
 import '../support/help_sheet.dart';
 
@@ -34,12 +37,26 @@ class _QuotesScreenState extends State<QuotesScreen> {
     AppScope.of(context).quotes.load();
   }
 
-  void _openQuote(QuoteRequest q) {
-    showAppBottomSheet<void>(
+  /// The sheet pops with a result only when the buyer accepted the quotation;
+  /// navigation happens here so it never runs against the sheet's dead context.
+  Future<void> _openQuote(QuoteRequest q) async {
+    final PlaceOrderResult? accepted =
+        await showAppBottomSheet<PlaceOrderResult>(
       context,
       title: q.id,
       builder: (context) => _QuoteDetail(quote: q),
     );
+    if (accepted == null || !mounted) return;
+    if (accepted.checkout == null) {
+      AppNavigator.toOrderConfirmation(context, accepted.order);
+    } else {
+      AppNavigator.toRazorpayCheckout(
+        context,
+        order: accepted.order,
+        checkout: accepted.checkout!,
+        replace: false,
+      );
+    }
   }
 
   @override
@@ -150,13 +167,77 @@ class _QuoteCard extends StatelessWidget {
   }
 }
 
-class _QuoteDetail extends StatelessWidget {
+class _QuoteDetail extends StatefulWidget {
   const _QuoteDetail({required this.quote});
 
   final QuoteRequest quote;
 
   @override
+  State<_QuoteDetail> createState() => _QuoteDetailState();
+}
+
+class _QuoteDetailState extends State<_QuoteDetail> {
+  bool _accepting = false;
+
+  /// A priced quotation can be turned into an order. The server re-checks the
+  /// price and the status, so the guards here are only to save the buyer a
+  /// round trip that would fail.
+  Future<void> _accept() async {
+    // Accepting creates an order server-side and is not idempotent: never let
+    // a second tap through, and never retry it automatically.
+    if (_accepting) return;
+    final AppServices services = AppScope.of(context);
+    final QuoteRequest quote = widget.quote;
+
+    if (!services.session.isRegistered) {
+      final bool saved =
+          await AppNavigator.toBusinessRegistration(context, allowSkip: false);
+      if (!saved || !mounted) return;
+    }
+
+    await services.addresses.load();
+    if (!mounted) return;
+    Address? address = services.addresses.defaultAddress;
+    if (address == null) {
+      address = await AppNavigator.toAddressForm(context);
+      if (address == null || !mounted) return;
+    }
+
+    final bool ok = await showAppConfirmDialog(
+      context,
+      title: 'Accept this quotation?',
+      message:
+          '${formatInr(quote.quotedTotal!)} becomes payable now, delivered to ${address.city}.',
+      confirmLabel: 'Accept & Pay',
+      icon: Icons.verified_outlined,
+    );
+    if (!ok || !mounted) return;
+
+    setState(() => _accepting = true);
+    try {
+      final PlaceOrderResult result = await services.quotes
+          .accept(quote.id, addressId: address.id);
+      if (!mounted) return;
+      // The list screen owns the navigation; this sheet is about to go away.
+      Navigator.of(context).pop(result);
+    } on AppException catch (e) {
+      if (!mounted) return;
+      setState(() => _accepting = false);
+      showAppSnackBar(context, e.message, tone: SnackTone.error);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _accepting = false);
+      showAppSnackBar(
+        context,
+        'Could not accept the quotation. Please try again.',
+        tone: SnackTone.error,
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final QuoteRequest quote = widget.quote;
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(
           AppSpacing.lg, AppSpacing.xs, AppSpacing.lg, AppSpacing.lg),
@@ -222,6 +303,24 @@ class _QuoteDetail extends StatelessWidget {
               label: 'Quoted total',
               value: formatInr(quote.quotedTotal!),
               emphasized: true,
+            ),
+          ],
+          // Only a quotation the team has actually priced can be accepted —
+          // every other status has nothing to pay for yet.
+          if (quote.status == QuoteStatus.quoted &&
+              quote.quotedTotal != null) ...[
+            const SizedBox(height: AppSpacing.lg),
+            PrimaryButton(
+              label: 'Accept & Pay',
+              icon: Icons.verified_outlined,
+              loading: _accepting,
+              onPressed: _accept,
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              'Accepting creates an order at the quoted price, inclusive of GST.',
+              style: AppTypography.caption,
+              textAlign: TextAlign.center,
             ),
           ],
           const SizedBox(height: AppSpacing.lg),

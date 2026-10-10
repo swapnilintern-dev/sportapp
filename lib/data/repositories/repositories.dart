@@ -397,6 +397,12 @@ abstract class AuthRepository {
   Future<UserSession> confirmMobileChange(String newMobile, String code);
 
   Future<void> signOut();
+
+  /// Closes the account for good: the server strips every personal detail and
+  /// retires the mobile number, keeping only the orders and invoices it is
+  /// legally required to. Signs this device out as a side effect. Irreversible,
+  /// so the caller must confirm with the buyer first.
+  Future<void> deleteAccount();
 }
 
 class DemoAuthRepository implements AuthRepository {
@@ -541,6 +547,16 @@ class DemoAuthRepository implements AuthRepository {
     _account.mobile = null;
     return _store.remove(StoreKeys.session);
   }
+
+  @override
+  Future<void> deleteAccount() async {
+    // Demo data only ever lived on this device, so wiping every key this
+    // account owns is the honest equivalent of the server erasing it.
+    for (final String key in StoreKeys.scoped) {
+      await _store.remove(_account.scoped(key));
+    }
+    await signOut();
+  }
 }
 
 //------------------------------------------------------------------------------
@@ -574,6 +590,12 @@ abstract class OrderRepository {
   Future<PlaceOrderResult> retryPayment(String orderId);
 
   Future<List<Invoice>> fetchInvoices();
+
+  /// A Razorpay session to settle an unpaid Pay Later invoice. The order it
+  /// belongs to is unchanged apart from its checkout session, so the caller
+  /// already holds the [Order] to pay against.
+  Future<CheckoutSession> payInvoice(String invoiceId);
+
   Future<DashboardStats> fetchDashboard({required double creditLimit});
 }
 
@@ -655,6 +677,11 @@ class DemoOrderRepository implements OrderRepository {
 
   @override
   Future<PlaceOrderResult> retryPayment(String orderId) async {
+    throw const AppException('Online payment needs the SPOCART server.');
+  }
+
+  @override
+  Future<CheckoutSession> payInvoice(String invoiceId) async {
     throw const AppException('Online payment needs the SPOCART server.');
   }
 
@@ -969,6 +996,12 @@ class QuoteDraft {
 abstract class QuoteRepository {
   Future<List<QuoteRequest>> fetchAll();
   Future<QuoteRequest> submit(QuoteDraft draft);
+
+  /// Buyer accepts a priced quotation. The server turns it into a
+  /// paymentPending order at the quoted total and returns the Razorpay session
+  /// to pay for it — the same shape as placing an order. Only valid while the
+  /// quote is still `quoted`.
+  Future<PlaceOrderResult> accept(String quoteId, {required String addressId});
 }
 
 class DemoQuoteRepository implements QuoteRepository {
@@ -1006,6 +1039,14 @@ class DemoQuoteRepository implements QuoteRepository {
     raw.insert(0, quote.toJson());
     await _store.writeJson(_key, raw);
     return quote;
+  }
+
+  @override
+  Future<PlaceOrderResult> accept(String quoteId,
+      {required String addressId}) async {
+    // Accepting creates a real Razorpay order, so there is nothing honest to
+    // fake here — the same stance as verifyPayment / retryPayment.
+    throw const AppException('Accepting a quotation needs the SPOCART server.');
   }
 }
 

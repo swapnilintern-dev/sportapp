@@ -52,8 +52,12 @@ class AppServices {
 
 
   /// Real backend: PostgreSQL + Razorpay through the SPOCART API.
-  factory AppServices.http(LocalStore store, {ApiClient? client}) {
+  ///
+  /// [secrets] defaults to the platform keystore; tests pass a memory store.
+  factory AppServices.http(LocalStore store,
+      {ApiClient? client, SecretStore? secrets}) {
     final ApiClient api = client ?? ApiClient();
+    final SecretStore secretStore = secrets ?? const KeychainSecretStore();
     final HttpCatalogRepository catalogRepository = HttpCatalogRepository(api);
     final CatalogController catalog = CatalogController(catalogRepository);
     final CartStorage cartStorage = CartStorage(store);
@@ -63,7 +67,7 @@ class AppServices {
       store: store,
       isDemo: false,
       api: api,
-      session: SessionController(HttpAuthRepository(api, store)),
+      session: SessionController(HttpAuthRepository(api, store, secretStore)),
       catalog: catalog,
       cart: CartController(cartStorage, catalog),
       wishlist: WishlistController(cartStorage),
@@ -162,6 +166,16 @@ class AppServices {
   /// device-local shopping state and are kept.
   Future<void> signOut() async {
     await session.signOut();
+    _resetAccountState();
+  }
+
+  /// Closes the account, then leaves the app in the same state a sign-out
+  /// does. The cart and wishlist go too: they are this buyer's, and there is no
+  /// account left to keep them for.
+  Future<void> deleteAccount() async {
+    await session.deleteAccount();
+    cart.clear();
+    wishlist.clear();
     _resetAccountState();
   }
 

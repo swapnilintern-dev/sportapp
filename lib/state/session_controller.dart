@@ -156,6 +156,17 @@ class SessionController extends ChangeNotifier {
     }
   }
 
+  /// Closes the account for good. Unlike [signOut], a failure is rethrown
+  /// rather than swallowed: the buyer must never be told their account is gone
+  /// when the server never agreed to it.
+  Future<void> deleteAccount() async {
+    await _auth.deleteAccount();
+    _session = null;
+    _challenge = null;
+    _mobileChange = null;
+    notifyListeners();
+  }
+
   void _setBusy(bool value) {
     if (_busy == value) return;
     _busy = value;

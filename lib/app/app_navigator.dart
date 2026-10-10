@@ -116,13 +116,24 @@ abstract final class AppNavigator {
       _push<void>(context, const CheckoutScreen());
 
   /// Razorpay checkout for an order the API created in paymentPending.
+  ///
+  /// [replace] drops the screen underneath, which is what checkout wants —
+  /// back must never land on a cart that has already become an order. Coming
+  /// from the quotations list there is nothing to protect, so it pushes and an
+  /// abandoned payment returns to the quote.
   static void toRazorpayCheckout(BuildContext context,
-      {required Order order, required CheckoutSession checkout}) {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(
-        builder: (_) => RazorpayCheckoutScreen(order: order, checkout: checkout),
-      ),
+      {required Order order,
+      required CheckoutSession checkout,
+      bool replace = true}) {
+    final MaterialPageRoute<void> route = MaterialPageRoute<void>(
+      builder: (_) => RazorpayCheckoutScreen(order: order, checkout: checkout),
     );
+    final NavigatorState navigator = Navigator.of(context);
+    if (replace) {
+      navigator.pushReplacement(route);
+    } else {
+      navigator.push(route);
+    }
   }
 
   static void toOrderConfirmation(BuildContext context, Order order) {

@@ -7,8 +7,17 @@ abstract final class AppInfo {
   static const String tagline = 'Your Sports Business Partner';
   static const String version = '1.0.0';
   static const String website = 'https://www.spocart.info';
-  static const String privacyUrl = 'https://www.spocart.info/about.html';
-  static const String termsUrl = 'https://www.spocart.info/about.html';
+
+  // These three are submitted to the Play Console and App Store Connect, so
+  // the URLs must keep working once an app build is live. Do not repoint them
+  // without updating the store listings as well.
+  static const String privacyUrl = 'https://www.spocart.info/privacy.html';
+  static const String termsUrl = 'https://www.spocart.info/terms.html';
+
+  /// The public page Google Play requires: how to close an account without the
+  /// app installed. The in-app route lives in Account → Privacy & Security.
+  static const String deleteAccountUrl =
+      'https://www.spocart.info/delete-account.html';
 }
 
 /// Business contact points surfaced on the help sheet and support screens.

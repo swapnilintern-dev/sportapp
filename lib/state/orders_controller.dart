@@ -146,6 +146,12 @@ class OrdersController extends ChangeNotifier {
     return result;
   }
 
+  /// A checkout session for an unpaid Pay Later invoice. Nothing is marked
+  /// paid here — that happens in [confirmPayment] once Razorpay reports back,
+  /// exactly as it does for a normal order.
+  Future<CheckoutSession> payInvoice(String invoiceId) =>
+      _repository.payInvoice(invoiceId);
+
   void _upsert(Order order) {
     final int i = _orders.indexWhere((o) => o.id == order.id);
     if (i >= 0) {

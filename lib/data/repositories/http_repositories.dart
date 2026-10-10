@@ -74,12 +74,32 @@ class HttpCatalogRepository implements CatalogRepository {
 }
 
 class HttpAuthRepository implements AuthRepository {
-  HttpAuthRepository(this._api, this._store);
+  HttpAuthRepository(this._api, this._store, this._secrets);
 
   static const String _tokenKey = 'auth.token';
 
   final ApiClient _api;
   final LocalStore _store;
+  final SecretStore _secrets;
+
+  /// Keeps the live client and the keystore in step, and clears the plain copy
+  /// older builds wrote so it cannot outlive the upgrade.
+  Future<void> _saveToken(String token) async {
+    _api.token = token;
+    await _secrets.write(_tokenKey, token);
+    await _store.remove(_tokenKey);
+  }
+
+  /// The token, migrating it out of SharedPreferences on the first launch
+  /// after the upgrade so existing buyers are not signed out.
+  Future<String?> _readToken() async {
+    final String? secure = await _secrets.read(_tokenKey);
+    if (secure != null && secure.isNotEmpty) return secure;
+    final List<String>? legacy = await _store.readStrings(_tokenKey);
+    if (legacy == null || legacy.isEmpty || legacy.first.isEmpty) return null;
+    await _saveToken(legacy.first);
+    return legacy.first;
+  }
 
   @override
   Future<OtpChallenge> sendOtp(String mobile) async {
@@ -105,18 +125,17 @@ class HttpAuthRepository implements AuthRepository {
         await _api.post('/auth/otp/verify', {'mobile': mobile, 'code': code}));
     final String token = d['token'] as String;
     final UserSession session = UserSession.fromJson(_map(d['user']));
-    _api.token = token;
-    await _store.writeStrings(_tokenKey, <String>[token]);
+    await _saveToken(token);
     await _store.writeJson(StoreKeys.session, session.toJson());
     return session;
   }
 
   @override
   Future<UserSession?> restoreSession() async {
-    final List<String>? saved = await _store.readStrings(_tokenKey);
+    final String? token = await _readToken();
     final Map<String, dynamic>? json = await _store.readMap(StoreKeys.session);
-    if (saved == null || saved.isEmpty || json == null) return null;
-    _api.token = saved.first;
+    if (token == null || json == null) return null;
+    _api.token = token;
     try {
       return UserSession.fromJson(json);
     } catch (_) {
@@ -161,8 +180,7 @@ class HttpAuthRepository implements AuthRepository {
         .post('/auth/mobile/change/verify', {'mobile': newMobile, 'code': code}));
     final String token = d['token'] as String;
     final UserSession session = UserSession.fromJson(_map(d['user']));
-    _api.token = token;
-    await _store.writeStrings(_tokenKey, <String>[token]);
+    await _saveToken(token);
     await _store.writeJson(StoreKeys.session, session.toJson());
     return session;
   }
@@ -170,8 +188,18 @@ class HttpAuthRepository implements AuthRepository {
   @override
   Future<void> signOut() async {
     _api.token = null;
+    await _secrets.delete(_tokenKey);
+    // A pre-upgrade copy may still be sitting in SharedPreferences.
     await _store.remove(_tokenKey);
     await _store.remove(StoreKeys.session);
+  }
+
+  @override
+  Future<void> deleteAccount() async {
+    await _api.delete('/auth/me');
+    // The server has already invalidated the token; clearing locally is what
+    // stops this device from showing a signed-in shell afterwards.
+    await signOut();
   }
 }
 
@@ -303,6 +331,13 @@ class HttpOrderRepository implements OrderRepository {
       _list(await _api.get('/invoices')).map(Invoice.fromJson).toList();
 
   @override
+  Future<CheckoutSession> payInvoice(String invoiceId) async {
+    final Map<String, dynamic> d =
+        _map(await _api.post('/invoices/$invoiceId/pay'));
+    return CheckoutSession.fromJson(_map(d['checkout']));
+  }
+
+  @override
   Future<DashboardStats> fetchDashboard({required double creditLimit}) async =>
       DashboardStats.fromJson(_map(await _api.get('/dashboard')));
 }
@@ -408,5 +443,19 @@ class HttpQuoteRepository implements QuoteRepository {
       'notes': draft.notes,
       'designFileUrl': ?designUrl,
     })));
+  }
+
+  @override
+  Future<PlaceOrderResult> accept(String quoteId,
+      {required String addressId}) async {
+    final Map<String, dynamic> d = _map(
+      await _api.post('/quotes/$quoteId/accept', {'addressId': addressId}),
+    );
+    return PlaceOrderResult(
+      order: Order.fromJson(_map(d['order'])),
+      checkout: d['checkout'] == null
+          ? null
+          : CheckoutSession.fromJson(_map(d['checkout'])),
+    );
   }
 }

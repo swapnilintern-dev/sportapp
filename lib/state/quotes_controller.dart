@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../data/models/engagement.dart';
+import '../data/models/order.dart';
 import '../data/repositories/repositories.dart';
 import 'notifications_controller.dart';
 
@@ -80,6 +81,24 @@ class QuotesController extends ChangeNotifier {
       _notifications.load(force: true);
     }
     return saved;
+  }
+
+  /// Accepts a priced quotation and returns the paymentPending order with its
+  /// Razorpay session. The quote is marked accepted locally so the list shows
+  /// it without waiting for a refetch.
+  ///
+  /// Like order placement this is not idempotent — the server creates an order
+  /// on every call — so callers must guard against a second tap.
+  Future<PlaceOrderResult> accept(String quoteId,
+      {required String addressId}) async {
+    final PlaceOrderResult result =
+        await _repository.accept(quoteId, addressId: addressId);
+    final int i = _quotes.indexWhere((q) => q.id == quoteId);
+    if (i != -1) {
+      _quotes[i] = _quotes[i].copyWith(status: QuoteStatus.accepted);
+      notifyListeners();
+    }
+    return result;
   }
 
   void reset() {

@@ -507,6 +507,54 @@ class _Toggle extends StatelessWidget {
 class PrivacySecurityScreen extends StatelessWidget {
   const PrivacySecurityScreen({super.key});
 
+  /// Permanent account closure, as Google Play and the App Store require. Two
+  /// confirmations: this cannot be undone, and the second one spells out what
+  /// is kept and why, so nobody deletes expecting their invoices to vanish.
+  Future<void> _deleteAccount(BuildContext context) async {
+    final bool first = await showAppConfirmDialog(
+      context,
+      title: 'Delete your account?',
+      message:
+          'This removes your business details, saved addresses, team members and notifications from SPOCART. It cannot be undone.',
+      confirmLabel: 'Continue',
+      destructive: true,
+      icon: Icons.person_remove_outlined,
+    );
+    if (!first || !context.mounted) return;
+
+    final bool second = await showAppConfirmDialog(
+      context,
+      title: 'This cannot be undone',
+      message:
+          'Your past orders and GST invoices are kept, without your personal details, because tax law requires us to hold them. '
+          'You will be signed out everywhere, and your mobile number will be free to register again as a brand-new account.',
+      confirmLabel: 'Delete My Account',
+      destructive: true,
+      icon: Icons.warning_amber_rounded,
+    );
+    if (!second || !context.mounted) return;
+
+    final AppServices services = AppScope.of(context);
+    try {
+      await services.deleteAccount();
+      if (!context.mounted) return;
+      showAppSnackBar(context, 'Your account has been deleted.');
+      AppNavigator.toLogin(context);
+    } on AppException catch (e) {
+      if (context.mounted) {
+        showAppSnackBar(context, e.message, tone: SnackTone.error);
+      }
+    } catch (_) {
+      if (context.mounted) {
+        showAppSnackBar(
+          context,
+          'Could not delete the account. Please try again.',
+          tone: SnackTone.error,
+        );
+      }
+    }
+  }
+
   Future<void> _clearLocalData(BuildContext context) async {
     final bool ok = await showAppConfirmDialog(
       context,
@@ -565,6 +613,13 @@ class PrivacySecurityScreen extends StatelessWidget {
                   subtitle: 'Removes cart and cached data from this device',
                   color: AppColors.red,
                   onTap: () => _clearLocalData(context),
+                ),
+                AccountMenuItem(
+                  icon: Icons.person_remove_outlined,
+                  label: 'Delete my account',
+                  subtitle: 'Permanently closes your SPOCART account',
+                  color: AppColors.red,
+                  onTap: () => _deleteAccount(context),
                 ),
               ],
             ),
