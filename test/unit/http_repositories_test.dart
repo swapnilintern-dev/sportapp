@@ -58,11 +58,13 @@ void main() {
   late FakeApi fake;
   late ApiClient api;
   late MemoryStore store;
+  late MemorySecretStore secrets;
 
   setUp(() {
     fake = FakeApi();
     api = ApiClient(client: fake.client, baseUrl: 'http://api.test/api/v1');
     store = MemoryStore();
+    secrets = MemorySecretStore();
   });
 
   group('Mobile number change', () {
@@ -78,7 +80,7 @@ void main() {
               'creditLimit': 100000,
             },
           };
-      final HttpAuthRepository auth = HttpAuthRepository(api, store);
+      final HttpAuthRepository auth = HttpAuthRepository(api, store, secrets);
       await auth.sendOtp('9876543210');
       await auth.verifyOtp('9876543210', '123456');
       return auth;
@@ -286,7 +288,7 @@ void main() {
         };
     fake.routes['GET /api/v1/addresses'] = (_) => <dynamic>[];
 
-    final HttpAuthRepository auth = HttpAuthRepository(api, store);
+    final HttpAuthRepository auth = HttpAuthRepository(api, store, secrets);
     final OtpChallenge c = await auth.sendOtp('9876543210');
     expect(c.demoCode, isNull);
 
@@ -299,7 +301,7 @@ void main() {
 
     // A new client over the same store restores the token.
     final ApiClient api2 = ApiClient(client: fake.client, baseUrl: 'http://api.test/api/v1');
-    final restored = await HttpAuthRepository(api2, store).restoreSession();
+    final restored = await HttpAuthRepository(api2, store, secrets).restoreSession();
     expect(restored?.mobile, '9876543210');
     expect(api2.token, 'jwt-123');
   });
@@ -368,5 +370,165 @@ void main() {
     expect(paid.paid, isTrue);
     expect(paid.status, OrderStatus.placed);
     expect(paid.total, 28320);
+  });
+
+  group('Accepting a quotation', () {
+    test('posts the delivery address and returns the order with its checkout',
+        () async {
+      fake.routes['POST /api/v1/quotes/QT-2026-0003/accept'] = (req) {
+        expect(jsonDecode(req.body), {'addressId': 'a1'});
+        return {
+          'order': _orderJson(),
+          'checkout': {
+            'keyId': 'rzp_test_1',
+            'razorpayOrderId': 'order_q1',
+            'amount': 2832000,
+            'description': 'Order SC-2026-0007',
+            'prefill': {'contact': '9876543210', 'email': 'b@x.in', 'name': 'Rohit'},
+          },
+        };
+      };
+      final PlaceOrderResult r = await HttpQuoteRepository(api)
+          .accept('QT-2026-0003', addressId: 'a1');
+      expect(r.order.id, 'SC-2026-0007');
+      expect(r.order.status, OrderStatus.paymentPending);
+      expect(r.checkout!.razorpayOrderId, 'order_q1');
+      expect(r.checkout!.amountPaise, 2832000);
+    });
+
+    test('a quotation that is not priced yet surfaces the server message',
+        () async {
+      fake.routes['POST /api/v1/quotes/QT-2026-0003/accept'] = (_) =>
+          http.Response(
+              jsonEncode({'ok': false, 'message': 'This quotation has not been priced yet.'}),
+              400);
+      expect(
+        () => HttpQuoteRepository(api).accept('QT-2026-0003', addressId: 'a1'),
+        throwsA(isA<AppException>().having(
+            (e) => e.message, 'message', 'This quotation has not been priced yet.')),
+      );
+    });
+  });
+
+  group('Paying a Pay Later invoice', () {
+    test('returns a checkout session for the invoice', () async {
+      fake.routes['POST /api/v1/invoices/INV-2026-0007/pay'] = (_) => {
+            'invoiceId': 'INV-2026-0007',
+            'checkout': {
+              'keyId': 'rzp_test_1',
+              'razorpayOrderId': 'order_inv1',
+              'amount': 2832000,
+              'description': 'Order SC-2026-0007',
+              'prefill': {'contact': '9876543210', 'email': 'b@x.in', 'name': 'Rohit'},
+            },
+          };
+      final CheckoutSession s =
+          await HttpOrderRepository(api).payInvoice('INV-2026-0007');
+      expect(s.razorpayOrderId, 'order_inv1');
+      expect(s.amountPaise, 2832000);
+    });
+
+    test('an already paid invoice surfaces the server message', () async {
+      fake.routes['POST /api/v1/invoices/INV-2026-0007/pay'] = (_) =>
+          http.Response(
+              jsonEncode({'ok': false, 'message': 'This invoice is already paid.'}), 400);
+      expect(
+        () => HttpOrderRepository(api).payInvoice('INV-2026-0007'),
+        throwsA(isA<AppException>().having(
+            (e) => e.message, 'message', 'This invoice is already paid.')),
+      );
+    });
+  });
+
+  group('Token storage', () {
+    void stubSignIn() {
+      fake.routes['POST /api/v1/auth/otp/send'] =
+          (_) => {'mobile': '9876543210', 'expiresAt': '2026-09-17T10:05:00Z'};
+      fake.routes['POST /api/v1/auth/otp/verify'] = (_) => {
+            'token': 'jwt-123',
+            'user': {
+              'mobile': '9876543210',
+              'signedInAt': '2026-09-17T10:00:00Z',
+              'profile': null,
+              'creditLimit': 100000,
+            },
+          };
+    }
+
+    test('the token goes to the keystore, never to shared preferences',
+        () async {
+      stubSignIn();
+      await HttpAuthRepository(api, store, secrets)
+          .verifyOtp('9876543210', '123456');
+      expect(await secrets.read('auth.token'), 'jwt-123');
+      expect(await store.readStrings('auth.token'), isNull);
+    });
+
+    test('a token left by an older build is migrated on the next launch',
+        () async {
+      // What the previous version wrote: plain text in shared preferences.
+      await store.writeStrings('auth.token', <String>['jwt-legacy']);
+      await store.writeJson(StoreKeys.session, {
+        'mobile': '9876543210',
+        'signedInAt': '2026-09-17T10:00:00Z',
+        'profile': null,
+        'creditLimit': 100000,
+      });
+
+      final UserSession? restored =
+          await HttpAuthRepository(api, store, secrets).restoreSession();
+
+      expect(restored?.mobile, '9876543210', reason: 'buyer stays signed in');
+      expect(api.token, 'jwt-legacy');
+      expect(await secrets.read('auth.token'), 'jwt-legacy');
+      expect(await store.readStrings('auth.token'), isNull,
+          reason: 'the plain copy must not survive the migration');
+    });
+
+    test('deleting the account calls the server, then clears this device',
+        () async {
+      stubSignIn();
+      fake.routes['DELETE /api/v1/auth/me'] = (_) => {'deleted': true};
+      final HttpAuthRepository auth = HttpAuthRepository(api, store, secrets);
+      await auth.verifyOtp('9876543210', '123456');
+
+      await auth.deleteAccount();
+
+      expect(fake.requests.last.method, 'DELETE');
+      expect(fake.requests.last.url.path, '/api/v1/auth/me');
+      expect(api.token, isNull);
+      expect(await secrets.read('auth.token'), isNull);
+      expect(await store.readMap(StoreKeys.session), isNull);
+    });
+
+    test('a refused deletion leaves the buyer signed in', () async {
+      stubSignIn();
+      fake.routes['DELETE /api/v1/auth/me'] = (_) => http.Response(
+          jsonEncode({'ok': false, 'message': 'Admin accounts cannot be deleted from the app.'}),
+          403);
+      final HttpAuthRepository auth = HttpAuthRepository(api, store, secrets);
+      await auth.verifyOtp('9876543210', '123456');
+
+      await expectLater(auth.deleteAccount(), throwsA(isA<AppException>()));
+
+      // Nothing was cleared: the account still exists on the server.
+      expect(api.token, 'jwt-123');
+      expect(await secrets.read('auth.token'), 'jwt-123');
+      expect(await store.readMap(StoreKeys.session), isNotNull);
+    });
+
+    test('signing out clears the keystore and any legacy copy', () async {
+      stubSignIn();
+      final HttpAuthRepository auth = HttpAuthRepository(api, store, secrets);
+      await auth.verifyOtp('9876543210', '123456');
+      await store.writeStrings('auth.token', <String>['jwt-legacy']);
+
+      await auth.signOut();
+
+      expect(api.token, isNull);
+      expect(await secrets.read('auth.token'), isNull);
+      expect(await store.readStrings('auth.token'), isNull);
+      expect(await store.readMap(StoreKeys.session), isNull);
+    });
   });
 }

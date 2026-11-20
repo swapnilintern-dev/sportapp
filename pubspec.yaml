@@ -34,6 +34,10 @@ dependencies:
   # Barcode / QR scanning on the search bar.
   mobile_scanner: ^7.4.2
 
+  # The auth token only: Keystore on Android, Keychain on iOS. Everything else
+  # the app caches is not a secret and stays in SharedPreferences.
+  flutter_secure_storage: ^11.2.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -122,7 +122,10 @@ void main() {
           headers: {'content-type': 'application/json'});
     });
     return AppServices.http(MemoryStore(),
-        client: ApiClient(client: client, baseUrl: 'http://api.test/api/v1'));
+        client: ApiClient(client: client, baseUrl: 'http://api.test/api/v1'),
+        // The real keystore talks to a platform channel there is no plugin for
+        // under flutter test.
+        secrets: MemorySecretStore());
   }
 
   /// Home's own list — every tab in the IndexedStack keeps a scrollable alive,
